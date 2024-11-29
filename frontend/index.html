@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件上传系统</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .upload-container {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .file-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        .file-item {
+            border: 1px solid #eee;
+            padding: 10px;
+            text-align: center;
+        }
+        .file-item img {
+            max-width: 100%;
+            height: auto;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            margin-top: 10px;
+            display: none;
+        }
+        .progress {
+            width: 0%;
+            height: 100%;
+            background-color: #4CAF50;
+            border-radius: 10px;
+            transition: width 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <h1>文件上传系统</h1>
+    
+    <div class="upload-container">
+        <input type="file" id="fileInput" multiple>
+        <div class="progress-bar">
+            <div class="progress"></div>
+        </div>
+    </div>
+
+    <h2>已上传文件</h2>
+    <div class="file-list" id="fileList"></div>
+
+    <script>
+        const API_URL = 'http://localhost:5000';
+
+        // 文件上传处理
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            const files = e.target.files;
+            const progressBar = document.querySelector('.progress-bar');
+            const progress = document.querySelector('.progress');
+            
+            for (let file of files) {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                progressBar.style.display = 'block';
+                progress.style.width = '0%';
+
+                try {
+                    const response = await fetch(`${API_URL}/upload`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        progress.style.width = '100%';
+                        setTimeout(() => {
+                            progressBar.style.display = 'none';
+                            loadFiles();
+                        }, 1000);
+                    } else {
+                        alert('上传失败');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('上传出错');
+                }
+            }
+        });
+
+        // 加载文件列表
+        async function loadFiles() {
+            try {
+                const response = await fetch(`${API_URL}/files`);
+                const files = await response.json();
+                const fileList = document.getElementById('fileList');
+                
+                fileList.innerHTML = '';
+                files.forEach(file => {
+                    const div = document.createElement('div');
+                    div.className = 'file-item';
+                    
+                    if (file.name.match(/\.(jpg|jpeg|png|gif)$/i)) {
+                        div.innerHTML = `
+                            <img src="${API_URL}/file/${file.name}" alt="${file.name}">
+                            <p>${file.name}</p>
+                        `;
+                    } else {
+                        div.innerHTML = `
+                            <p>📄 ${file.name}</p>
+                            <a href="${API_URL}/file/${file.name}" target="_blank">下载</a>
+                        `;
+                    }
+                    
+                    fileList.appendChild(div);
+                });
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        // 初始加载文件列表
+        loadFiles();
+    </script>
+</body>
+</html> 
