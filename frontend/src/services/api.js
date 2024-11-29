@@ -1,8 +1,9 @@
 import axios from 'axios';
+import { API_URL } from '../config';
 
 // Create axios instance with custom config
 const apiClient = axios.create({
-  baseURL: 'http://127.0.0.1:5000',
+  baseURL: API_URL,
   timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
@@ -43,7 +44,7 @@ export const uploadFile = async (file, path = '') => {
     formData.append('path', path);
 
     console.log('Upload request:', {
-      url: 'http://127.0.0.1:5000/api/upload',
+      url: '/api/upload',
       method: 'POST',
       data: {
         file: file.name,
@@ -51,14 +52,11 @@ export const uploadFile = async (file, path = '') => {
       }
     });
 
-    const response = await axios({
-      method: 'post',
-      url: 'http://127.0.0.1:5000/api/upload',
-      data: formData,
+    const response = await apiClient.post('/api/upload', formData, {
       headers: {
+        'Content-Type': 'multipart/form-data',
         'Accept': 'application/json'
       },
-      withCredentials: false,
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
       timeout: 300000, // 5 minutes timeout for large files
@@ -132,14 +130,11 @@ export const readFile = async (path) => {
 export const deletePath = async (path) => {
   try {
     console.log(`Deleting path: ${path}`);
-    const response = await axios({
-      method: 'delete',
-      url: 'http://127.0.0.1:5000/api/files',
+    const response = await apiClient.delete('/api/files', {
       params: { path },
       headers: {
         'Accept': 'application/json'
-      },
-      withCredentials: false
+      }
     });
     console.log('Delete response:', response.data);
     return response.data;
@@ -174,8 +169,25 @@ export const searchFiles = async (query) => {
 
 // AI-related functions
 export const chat = async (messages) => {
-  const response = await apiClient.post('/api/chat', { messages });
-  return response.data;
+  try {
+    console.log('Sending chat request:', { messages });
+    const response = await apiClient.post('/api/chat', { messages }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    });
+    console.log('Chat response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Chat error details:', {
+      error: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      request: error.request ? 'Request was made but no response' : 'Request setup failed'
+    });
+    throw error;
+  }
 };
 
 export const analyzeCode = async (code) => {

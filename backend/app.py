@@ -4,6 +4,15 @@ import os
 import logging
 import shutil
 from werkzeug.utils import secure_filename
+import openai
+from dotenv import load_dotenv
+import requests
+import json
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -16,6 +25,24 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# Configure API keys
+BASEURL = os.getenv('CLAUDE_API_BASE', 'https://api.claude-Plus.top')
+SKEY = os.getenv('CLAUDE_API_KEY')
+
+if not SKEY:
+    logger.warning("CLAUDE_API_KEY not set in environment variables or .env file")
+
+# Configure requests session with retry mechanism
+session = requests.Session()
+retry_strategy = Retry(
+    total=3,  # number of retries
+    backoff_factor=1,  # wait 1, 2, 4 seconds between retries
+    status_forcelist=[500, 502, 503, 504]  # HTTP status codes to retry on
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+session.mount("http://", adapter)
+session.mount("https://", adapter)
+
 app = Flask(__name__)
 
 # Configure CORS
@@ -23,7 +50,9 @@ CORS(app, resources={
     r"/*": {
         "origins": "*",
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type"],
+        "allow_headers": ["Content-Type", "Accept", "Authorization", "X-Requested-With", "Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers"],
+        "expose_headers": ["Content-Length", "Content-Range"],
+        "supports_credentials": True
     }
 })
 
@@ -300,5 +329,86 @@ def read_file():
         logger.exception(e)
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/chat', methods=['POST', 'OPTIONS'])
+def chat():
+    if request.method == 'OPTIONS':
+        response = app.make_default_options_response()
+        return response
+
+    try:
+        if not SKEY:
+            return jsonify({'error': 'API key not configured'}), 500
+
+        data = request.get_json()
+        if not data or 'messages' not in data:
+            return jsonify({'error': 'No messages provided'}), 400
+
+        messages = data['messages']
+        logger.info(f"Chat request received with {len(messages)} messages")
+
+        try:
+            # Prepare request payload exactly as in the example
+            payload = json.dumps({
+                "model": "gpt-4o",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant."
+                    }
+                ] + messages
+            })
+
+            url = BASEURL + "/v1/chat/completions"
+            headers = {
+                'Accept': 'application/json',
+                'Authorization': f'Bearer {SKEY}',
+                'User-Agent': 'Apifox/1.0.0 (https://apifox.com)',
+                'Content-Type': 'application/json'
+            }
+
+            logger.info(f"Sending request to API: {payload}")
+            logger.info(f"Request URL: {url}")
+            logger.info(f"Request headers: {headers}")
+            
+            # Use session instead of requests.request
+            response = session.post(
+                url,
+                headers=headers,
+                data=payload,
+                verify=False,
+                timeout=30  # 30 seconds timeout
+            )
+            
+            logger.info(f"Response status code: {response.status_code}")
+            logger.info(f"Response headers: {response.headers}")
+            logger.info(f"Response text: {response.text}")
+            
+            if response.status_code != 200:
+                logger.error(f"API error: {response.text}")
+                return jsonify({
+                    'error': f'AI service error: {response.text}',
+                    'status_code': response.status_code,
+                    'headers': dict(response.headers)
+                }), response.status_code
+
+            # Parse response JSON as in the example
+            data = response.json()
+            logger.info(f"API response data: {json.dumps(data)}")
+            return jsonify(data)
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"API request error: {str(e)}")
+            logger.error(f"Request details: URL={url}, Headers={headers}")
+            return jsonify({'error': f'AI service error: {str(e)}'}), 500
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error: {str(e)}")
+            logger.error(f"Response text: {response.text}")
+            return jsonify({'error': 'Invalid JSON response from API'}), 500
+
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {str(e)}")
+        logger.exception(e)
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=8000)
