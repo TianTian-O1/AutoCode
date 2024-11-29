@@ -1,0 +1,304 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import os
+import logging
+import shutil
+from werkzeug.utils import secure_filename
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__)
+
+# Configure CORS
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type"],
+    }
+})
+
+# Configure file upload settings
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
+app.config['UPLOAD_EXTENSIONS'] = None  # Allow all file types
+
+# Configure workspace path
+WORKSPACE_PATH = os.getenv('WORKSPACE_PATH', os.path.join(os.path.dirname(__file__), 'workspace'))
+os.makedirs(WORKSPACE_PATH, exist_ok=True)
+
+@app.route('/api/upload', methods=['POST', 'OPTIONS'])
+def upload_file():
+    # Handle preflight request
+    if request.method == 'OPTIONS':
+        response = app.make_default_options_response()
+        return response
+
+    try:
+        logger.info("=== Starting file upload ===")
+        logger.info(f"Request headers: {dict(request.headers)}")
+        logger.info(f"Request files: {list(request.files.keys())}")
+        logger.info(f"Request form: {dict(request.form)}")
+        
+        if 'file' not in request.files:
+            logger.error("No file in request")
+            return jsonify({'error': 'No file provided'}), 400
+            
+        file = request.files['file']
+        path = request.form.get('path', '').strip('/')
+        
+        logger.info(f"Uploading file: {file.filename} to path: {path}")
+        
+        if not file.filename:
+            logger.error("Empty filename")
+            return jsonify({'error': 'No file selected'}), 400
+            
+        try:
+            # Process the path components
+            if path:
+                # Split path and clean each component
+                path_parts = []
+                for part in path.split('/'):
+                    # Remove any problematic characters but keep more valid ones
+                    cleaned_part = ''.join(c for c in part if c.isalnum() or c in '-._')
+                    if cleaned_part:
+                        path_parts.append(cleaned_part)
+                save_path = os.path.join(WORKSPACE_PATH, *path_parts)
+            else:
+                save_path = WORKSPACE_PATH
+            
+            logger.info(f"Save path: {save_path}")
+            
+            # Create directory structure
+            os.makedirs(save_path, exist_ok=True)
+            logger.info(f"Created/verified directory: {save_path}")
+            
+            # Clean the filename but preserve extension
+            filename = file.filename
+            if '/' in filename or '\\' in filename:
+                filename = os.path.basename(filename)
+            
+            # Split filename and extension
+            name, ext = os.path.splitext(filename)
+            # Clean the name part
+            clean_name = ''.join(c for c in name if c.isalnum() or c in '-._')
+            # Truncate if too long (leaving room for extension)
+            if len(clean_name) > 200:
+                clean_name = clean_name[:200]
+            # Reassemble filename
+            filename = clean_name + ext
+            
+            # Get the full file path
+            file_path = os.path.join(save_path, filename)
+            logger.info(f"Full file path: {file_path}")
+            
+            # Ensure the final path is still within WORKSPACE_PATH
+            if not os.path.abspath(file_path).startswith(os.path.abspath(WORKSPACE_PATH)):
+                logger.error(f"Invalid file path: {file_path}")
+                return jsonify({'error': 'Invalid file path'}), 400
+            
+            # Handle duplicate filenames
+            counter = 1
+            original_name, ext = os.path.splitext(filename)
+            while os.path.exists(file_path):
+                new_name = f"{original_name}_{counter}{ext}"
+                file_path = os.path.join(save_path, new_name)
+                counter += 1
+            
+            # Save the file
+            file.save(file_path)
+            file_size = os.path.getsize(file_path)
+            logger.info(f"Successfully saved file: {file_path} (size: {file_size} bytes)")
+            
+            # Get relative path
+            rel_path = os.path.relpath(file_path, WORKSPACE_PATH)
+            
+            response_data = {
+                'message': 'File uploaded successfully',
+                'file': {
+                    'name': os.path.basename(file_path),
+                    'path': rel_path,
+                    'type': 'file',
+                    'size': file_size
+                }
+            }
+            logger.info(f"Sending response: {response_data}")
+            return jsonify(response_data), 200
+            
+        except Exception as e:
+            logger.error(f"Error saving file: {str(e)}")
+            logger.exception(e)
+            return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error in upload endpoint: {str(e)}")
+        logger.exception(e)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/files', methods=['GET', 'DELETE', 'OPTIONS'])
+def handle_files():
+    if request.method == 'OPTIONS':
+        response = app.make_default_options_response()
+        return response
+        
+    if request.method == 'DELETE':
+        try:
+            path = request.args.get('path', '').strip('/')
+            logger.info(f"Deleting path: {path}")
+            
+            if not path:
+                return jsonify({'error': 'No path provided'}), 400
+                
+            # Get the full path
+            full_path = os.path.join(WORKSPACE_PATH, path)
+            full_path = os.path.abspath(full_path)
+            
+            # Ensure the path is within WORKSPACE_PATH
+            if not full_path.startswith(os.path.abspath(WORKSPACE_PATH)):
+                logger.error(f"Invalid path: {full_path}")
+                return jsonify({'error': 'Invalid path'}), 400
+                
+            if not os.path.exists(full_path):
+                logger.error(f"Path not found: {full_path}")
+                return jsonify({'error': 'Path not found'}), 404
+                
+            try:
+                if os.path.isfile(full_path):
+                    os.remove(full_path)
+                    logger.info(f"Deleted file: {full_path}")
+                else:
+                    shutil.rmtree(full_path)
+                    logger.info(f"Deleted directory and its contents: {full_path}")
+                    
+                return jsonify({'message': 'Successfully deleted'})
+            except Exception as e:
+                logger.error(f"Error deleting {full_path}: {str(e)}")
+                logger.exception(e)
+                return jsonify({'error': f'Failed to delete: {str(e)}'}), 500
+                
+        except Exception as e:
+            logger.error(f"Error in delete endpoint: {str(e)}")
+            logger.exception(e)
+            return jsonify({'error': str(e)}), 500
+            
+    # GET method - list files
+    try:
+        path = request.args.get('path', '').strip('/')
+        logger.info(f"Listing files for path: {path}")
+        
+        # Get the full directory path
+        dir_path = os.path.join(WORKSPACE_PATH, path) if path else WORKSPACE_PATH
+        dir_path = os.path.abspath(dir_path)
+        
+        # Ensure the path is within WORKSPACE_PATH
+        if not dir_path.startswith(os.path.abspath(WORKSPACE_PATH)):
+            logger.error(f"Invalid path: {dir_path}")
+            return jsonify({'error': 'Invalid path'}), 400
+        
+        if not os.path.exists(dir_path):
+            return jsonify({'files': []})
+            
+        files = []
+        for root, dirs, filenames in os.walk(dir_path):
+            # Get relative path from WORKSPACE_PATH
+            rel_root = os.path.relpath(root, WORKSPACE_PATH)
+            if rel_root == '.':
+                rel_root = ''
+                
+            # Add directories
+            for dirname in dirs:
+                dir_path = os.path.join(root, dirname)
+                rel_path = os.path.relpath(dir_path, WORKSPACE_PATH)
+                
+                files.append({
+                    'name': dirname,
+                    'path': rel_path,
+                    'type': 'directory',
+                    'itemCount': len(os.listdir(dir_path))
+                })
+            
+            # Add files
+            for filename in filenames:
+                file_path = os.path.join(root, filename)
+                rel_path = os.path.relpath(file_path, WORKSPACE_PATH)
+                
+                try:
+                    files.append({
+                        'name': filename,
+                        'path': rel_path,
+                        'type': 'file',
+                        'size': os.path.getsize(file_path)
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing file {file_path}: {str(e)}")
+                    continue
+            
+        logger.info(f"Found {len(files)} files/directories")
+        return jsonify({'files': files})
+    except Exception as e:
+        logger.error(f"Error listing files: {str(e)}")
+        logger.exception(e)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/files/read', methods=['GET', 'OPTIONS'])
+def read_file():
+    if request.method == 'OPTIONS':
+        response = app.make_default_options_response()
+        return response
+
+    try:
+        path = request.args.get('path', '').strip('/')
+        logger.info(f"Reading file: {path}")
+        
+        if not path:
+            return jsonify({'error': 'No path provided'}), 400
+            
+        # Get the full path
+        full_path = os.path.join(WORKSPACE_PATH, path)
+        full_path = os.path.abspath(full_path)
+        
+        # Ensure the path is within WORKSPACE_PATH
+        if not full_path.startswith(os.path.abspath(WORKSPACE_PATH)):
+            logger.error(f"Invalid path: {full_path}")
+            return jsonify({'error': 'Invalid path'}), 400
+            
+        if not os.path.exists(full_path):
+            logger.error(f"File not found: {full_path}")
+            return jsonify({'error': 'File not found'}), 404
+            
+        if not os.path.isfile(full_path):
+            logger.error(f"Not a file: {full_path}")
+            return jsonify({'error': 'Not a file'}), 400
+            
+        try:
+            with open(full_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            logger.info(f"Successfully read file: {full_path}")
+            return jsonify({
+                'content': content,
+                'path': path,
+                'name': os.path.basename(path)
+            })
+        except UnicodeDecodeError:
+            logger.error(f"Binary file detected: {full_path}")
+            return jsonify({'error': 'Cannot read binary file'}), 400
+        except Exception as e:
+            logger.error(f"Error reading file {full_path}: {str(e)}")
+            logger.exception(e)
+            return jsonify({'error': f'Failed to read file: {str(e)}'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error in read endpoint: {str(e)}")
+        logger.exception(e)
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)
