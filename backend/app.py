@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
 import logging
@@ -10,6 +10,8 @@ import requests
 import json
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import subprocess
+from datetime import datetime
 
 # Load environment variables from .env file
 load_dotenv()
@@ -63,6 +65,9 @@ app.config['UPLOAD_EXTENSIONS'] = None  # Allow all file types
 # Configure workspace path
 WORKSPACE_PATH = os.getenv('WORKSPACE_PATH', os.path.join(os.path.dirname(__file__), 'workspace'))
 os.makedirs(WORKSPACE_PATH, exist_ok=True)
+
+# 配置 OpenAI API
+openai.api_key = os.getenv('OPENAI_API_KEY')
 
 @app.route('/api/upload', methods=['POST', 'OPTIONS'])
 def upload_file():
@@ -329,85 +334,252 @@ def read_file():
         logger.exception(e)
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/chat', methods=['POST', 'OPTIONS'])
+@app.route('/api/chat', methods=['POST'])
 def chat():
-    if request.method == 'OPTIONS':
-        response = app.make_default_options_response()
-        return response
-
     try:
-        if not SKEY:
-            return jsonify({'error': 'API key not configured'}), 500
+        data = request.json
+        message = data.get('message')
+        file_path = data.get('filePath')
+        chat_history = data.get('history', [])
 
-        data = request.get_json()
-        if not data or 'messages' not in data:
-            return jsonify({'error': 'No messages provided'}), 400
+        if not message:
+            return jsonify({'error': 'No message provided'}), 400
 
-        messages = data['messages']
-        logger.info(f"Chat request received with {len(messages)} messages")
+        # 如果指定了文件路径，读取文件内容
+        file_content = None
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    file_content = f.read()
+            except Exception as e:
+                return jsonify({'error': f'Failed to read file: {str(e)}'}), 500
 
-        try:
-            # Prepare request payload exactly as in the example
-            payload = json.dumps({
-                "model": "gpt-4o",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are a helpful assistant."
-                    }
-                ] + messages
+        # 构建系统提示
+        system_prompt = """You are an AI assistant that helps users modify their code through natural language conversation. 
+        You can understand user requirements and suggest code changes. When modifying files:
+        1. First analyze the current code and understand what needs to be changed
+        2. Explain your proposed changes clearly
+        3. Show the exact code changes that need to be made
+        4. Ask for confirmation before making any changes"""
+
+        # 构建消息历史
+        messages = [
+            {"role": "system", "content": system_prompt}
+        ]
+
+        # 添加聊天历史
+        for chat in chat_history:
+            messages.append({
+                "role": "user" if chat['isUser'] else "assistant",
+                "content": chat['message']
             })
 
-            url = BASEURL + "/v1/chat/completions"
-            headers = {
-                'Accept': 'application/json',
-                'Authorization': f'Bearer {SKEY}',
-                'User-Agent': 'Apifox/1.0.0 (https://apifox.com)',
-                'Content-Type': 'application/json'
-            }
+        # 如果有文件内容，添加到当前上下文
+        if file_content:
+            messages.append({
+                "role": "system",
+                "content": f"Current file content:\n```\n{file_content}\n```"
+            })
 
-            logger.info(f"Sending request to API: {payload}")
-            logger.info(f"Request URL: {url}")
-            logger.info(f"Request headers: {headers}")
-            
-            # Use session instead of requests.request
-            response = session.post(
-                url,
-                headers=headers,
-                data=payload,
-                verify=False,
-                timeout=30  # 30 seconds timeout
-            )
-            
-            logger.info(f"Response status code: {response.status_code}")
-            logger.info(f"Response headers: {response.headers}")
-            logger.info(f"Response text: {response.text}")
-            
-            if response.status_code != 200:
-                logger.error(f"API error: {response.text}")
-                return jsonify({
-                    'error': f'AI service error: {response.text}',
-                    'status_code': response.status_code,
-                    'headers': dict(response.headers)
-                }), response.status_code
+        # 添加用户的新消息
+        messages.append({"role": "user", "content": message})
 
-            # Parse response JSON as in the example
-            data = response.json()
-            logger.info(f"API response data: {json.dumps(data)}")
-            return jsonify(data)
+        # 调用 OpenAI API
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=2000
+        )
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"API request error: {str(e)}")
-            logger.error(f"Request details: URL={url}, Headers={headers}")
-            return jsonify({'error': f'AI service error: {str(e)}'}), 500
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error: {str(e)}")
-            logger.error(f"Response text: {response.text}")
-            return jsonify({'error': 'Invalid JSON response from API'}), 500
+        # 获取 AI 的回复
+        ai_response = response.choices[0].message['content']
+
+        # 检查是否包含代码修改建议
+        if '```' in ai_response:
+            # 这里可以添加代码解析和文件修改的逻辑
+            pass
+
+        return jsonify({
+            'message': ai_response,
+            'needsConfirmation': '```' in ai_response
+        })
 
     except Exception as e:
-        logger.error(f"Error in chat endpoint: {str(e)}")
-        logger.exception(e)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/apply-changes', methods=['POST'])
+def apply_changes():
+    try:
+        data = request.json
+        file_path = data.get('filePath')
+        new_content = data.get('content')
+
+        if not file_path or not new_content:
+            return jsonify({'error': 'File path and content are required'}), 400
+
+        # 备份原文件
+        backup_path = f"{file_path}.bak"
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                original_content = f.read()
+            with open(backup_path, 'w', encoding='utf-8') as f:
+                f.write(original_content)
+        except Exception as e:
+            return jsonify({'error': f'Failed to create backup: {str(e)}'}), 500
+
+        # 写入新内容
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+        except Exception as e:
+            # 如果写入失败，尝试恢复备份
+            try:
+                with open(backup_path, 'r', encoding='utf-8') as f:
+                    backup_content = f.read()
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(backup_content)
+            except:
+                pass
+            return jsonify({'error': f'Failed to write file: {str(e)}'}), 500
+
+        # 删除备份文件
+        try:
+            os.remove(backup_path)
+        except:
+            pass
+
+        return jsonify({'message': 'Changes applied successfully'})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/git/commit', methods=['POST'])
+def git_commit():
+    try:
+        data = request.json
+        message = data.get('message', f'Auto commit at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+        
+        # 获取当前工作目录
+        cwd = os.getcwd()
+        
+        # 执行 git add
+        subprocess.run(['git', 'add', '.'], check=True, cwd=cwd)
+        
+        # 执行 git commit
+        subprocess.run(['git', 'commit', '-m', message], check=True, cwd=cwd)
+        
+        return jsonify({'message': 'Successfully committed changes'})
+    except subprocess.CalledProcessError as e:
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/git/history', methods=['GET'])
+def git_history():
+    try:
+        # 获取当前工作目录
+        cwd = os.getcwd()
+        
+        # 获取 git log
+        result = subprocess.run(
+            ['git', 'log', '--pretty=format:%H|%an|%ad|%s', '--date=iso'],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=cwd
+        )
+        
+        # 解析 git log 输出
+        commits = []
+        for line in result.stdout.split('\n'):
+            if line:
+                hash_id, author, date, message = line.split('|')
+                commits.append({
+                    'hash': hash_id,
+                    'author': author,
+                    'date': date,
+                    'message': message
+                })
+        
+        return jsonify(commits)
+    except subprocess.CalledProcessError as e:
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/git/revert', methods=['POST'])
+def git_revert():
+    try:
+        data = request.json
+        commit_hash = data.get('hash')
+        
+        if not commit_hash:
+            return jsonify({'error': 'Commit hash is required'}), 400
+        
+        # 获取当前工作目录
+        cwd = os.getcwd()
+        
+        # 检查是否有未提交的更改
+        status = subprocess.run(
+            ['git', 'status', '--porcelain'],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=cwd
+        )
+        
+        if status.stdout.strip():
+            # 如果有未提交的更改，先创建一个临时提交
+            subprocess.run(['git', 'add', '.'], check=True, cwd=cwd)
+            subprocess.run(
+                ['git', 'commit', '-m', 'Temporary commit before revert'],
+                check=True,
+                cwd=cwd
+            )
+        
+        # 执行 git revert
+        subprocess.run(['git', 'revert', '--no-commit', commit_hash], check=True, cwd=cwd)
+        subprocess.run(
+            ['git', 'commit', '-m', f'Revert to {commit_hash}'],
+            check=True,
+            cwd=cwd
+        )
+        
+        return jsonify({'message': f'Successfully reverted to commit {commit_hash}'})
+    except subprocess.CalledProcessError as e:
+        # 如果出错，尝试中止 revert
+        try:
+            subprocess.run(['git', 'revert', '--abort'], cwd=cwd)
+        except:
+            pass
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/git/reset', methods=['POST'])
+def git_reset():
+    try:
+        data = request.json
+        commit_hash = data.get('hash')
+        mode = data.get('mode', 'mixed')  # 可以是 soft, mixed, 或 hard
+        
+        if not commit_hash:
+            return jsonify({'error': 'Commit hash is required'}), 400
+        
+        if mode not in ['soft', 'mixed', 'hard']:
+            return jsonify({'error': 'Invalid reset mode'}), 400
+        
+        # 获取当前工作目录
+        cwd = os.getcwd()
+        
+        # 执行 git reset
+        subprocess.run(['git', 'reset', f'--{mode}', commit_hash], check=True, cwd=cwd)
+        
+        return jsonify({'message': f'Successfully reset to commit {commit_hash} with mode {mode}'})
+    except subprocess.CalledProcessError as e:
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

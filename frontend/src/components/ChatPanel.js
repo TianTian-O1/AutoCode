@@ -8,6 +8,8 @@ import {
   Avatar,
   CircularProgress,
   Button,
+  ButtonGroup,
+  Tooltip,
   SpeedDial,
   SpeedDialAction,
   SpeedDialIcon,
@@ -21,6 +23,9 @@ import {
   GitHub as GitHubIcon,
   Analytics as AnalyticsIcon,
   Menu as MenuIcon,
+  Undo as UndoIcon,
+  Redo as RedoIcon,
+  RestartAlt as ResetIcon,
 } from '@mui/icons-material';
 import { chat } from '../services/api';
 
@@ -182,6 +187,30 @@ function ChatPanel({ onSendCode, onAnalyze, onGenerate, isAnalyzing }) {
     }
   };
 
+  const handleUndo = async () => {
+    try {
+      await fetch('/api/undo', { method: 'POST' });
+    } catch (error) {
+      console.error('Error undoing:', error);
+    }
+  };
+
+  const handleRedo = async () => {
+    try {
+      await fetch('/api/redo', { method: 'POST' });
+    } catch (error) {
+      console.error('Error redoing:', error);
+    }
+  };
+
+  const handleReset = async () => {
+    try {
+      await fetch('/api/reset', { method: 'POST' });
+    } catch (error) {
+      console.error('Error resetting:', error);
+    }
+  };
+
   const actions = [
     { icon: <AnalyticsIcon />, name: 'Analyze Code', onClick: () => onAnalyze('gpt') },
     { icon: <CodeIcon />, name: 'Generate Code', onClick: () => onGenerate('gpt') },
@@ -254,6 +283,27 @@ function ChatPanel({ onSendCode, onAnalyze, onGenerate, isAnalyzing }) {
           </Box>
         )}
         <div ref={messagesEndRef} />
+      </Box>
+
+      {/* 回退按钮组 */}
+      <Box sx={{ p: 1, borderTop: 1, borderColor: 'divider' }}>
+        <ButtonGroup size="small" variant="outlined" fullWidth>
+          <Tooltip title="撤销">
+            <Button startIcon={<UndoIcon />} onClick={handleUndo}>
+              撤销
+            </Button>
+          </Tooltip>
+          <Tooltip title="重做">
+            <Button startIcon={<RedoIcon />} onClick={handleRedo}>
+              重做
+            </Button>
+          </Tooltip>
+          <Tooltip title="重置">
+            <Button startIcon={<ResetIcon />} onClick={handleReset}>
+              重置
+            </Button>
+          </Tooltip>
+        </ButtonGroup>
       </Box>
 
       <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
