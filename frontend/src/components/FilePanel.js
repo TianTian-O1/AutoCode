@@ -5,25 +5,26 @@ import {
   ListItem, 
   ListItemIcon, 
   ListItemText,
-  IconButton,
+  Typography,
+  useTheme,
+  CircularProgress,
   Button,
+  IconButton,
   Menu,
   MenuItem,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  Typography,
-  useTheme,
-  CircularProgress
+  Tooltip,
 } from '@mui/material';
 import {
   InsertDriveFile as FileIcon,
   Folder as FolderIcon,
   FolderOpen as FolderOpenIcon,
-  MoreVert as MoreIcon,
   Delete as DeleteIcon,
   CloudUpload as UploadIcon,
+  MoreVert as MoreIcon,
   Code as CodeIcon,
   Api as JavaScriptIcon,
   Terminal as PythonIcon,
@@ -33,6 +34,12 @@ import {
   Css as CssIcon,
   Terminal as ShellIcon,
   Image as ImageIcon,
+  ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
+  Close as CloseIcon,
+  Refresh as RefreshIcon,
+  DeleteForever as DeleteForeverIcon,
+  DeleteSweep as DeleteSweepIcon,
 } from '@mui/icons-material';
 import { deletePath } from '../services/api';
 import * as api from '../services/api';
@@ -81,29 +88,36 @@ const getFileIcon = (filename) => {
 };
 
 const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) => {
-  const theme = useTheme();
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState(new Set());
   const [rootFiles, setRootFiles] = useState([]);
   const [isProcessing, setIsProcessing] = useState(true);
+  const [openFiles, setOpenFiles] = useState(new Set());
+  const [deleteProjectConfirmOpen, setDeleteProjectConfirmOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState(null);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const theme = useTheme();
 
   useEffect(() => {
-    console.log('FilePanel: files updated', files);
-    setIsProcessing(true);
-    // Process files in the next tick to avoid blocking the UI
-    setTimeout(() => {
-      const rootLevel = files.filter(f => !f.path.includes('/'));
-      rootLevel.sort((a, b) => {
-        if (a.type === b.type) {
-          return a.name.localeCompare(b.name);
-        }
-        return a.type === 'directory' ? -1 : 1;
-      });
-      setRootFiles(rootLevel);
-      setIsProcessing(false);
-    }, 0);
+    const processFiles = () => {
+      setIsProcessing(true);
+      // Process files in the next tick to avoid blocking the UI
+      setTimeout(() => {
+        const rootLevel = files.filter(f => !f.path.includes('/'));
+        rootLevel.sort((a, b) => {
+          if (a.type === b.type) {
+            return a.name.localeCompare(b.name);
+          }
+          return a.type === 'directory' ? -1 : 1;
+        });
+        setRootFiles(rootLevel);
+        setIsProcessing(false);
+      }, 0);
+    };
+
+    processFiles();
   }, [files]);
 
   const handleContextMenu = (event, file) => {
@@ -121,7 +135,12 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
     setSelectedFile(null);
   };
 
-  const handleDelete = async () => {
+  const handleDeleteClick = () => {
+    setDeleteConfirmOpen(true);
+    setContextMenu(null);
+  };
+
+  const handleDeleteConfirm = async () => {
     if (!selectedFile) return;
 
     try {
@@ -132,11 +151,6 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
     }
     setDeleteConfirmOpen(false);
     handleClose();
-  };
-
-  const handleDeleteClick = () => {
-    setDeleteConfirmOpen(true);
-    setContextMenu(null);
   };
 
   const handleFileClick = async (file) => {
@@ -161,6 +175,7 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
           throw new Error('Invalid file content received');
         }
         
+        setOpenFiles(prev => new Set(prev).add(file.path));
         onFileSelect({
           ...file,
           content: response.content,
@@ -170,6 +185,32 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
         console.error('Failed to read file:', error);
       }
     }
+  };
+
+  const handleCloseFile = (e, filePath) => {
+    e.stopPropagation();
+    setOpenFiles(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(filePath);
+      return newSet;
+    });
+    const nextOpenFile = Array.from(openFiles).find(path => path !== filePath);
+    if (nextOpenFile) {
+      const file = files.find(f => f.path === nextOpenFile);
+      if (file) {
+        onFileSelect(file);
+      }
+    } else {
+      onFileSelect({ path: '', content: '', language: 'plaintext' });
+    }
+  };
+
+  const handleResetProject = () => {
+    setExpandedFolders(new Set());
+    setOpenFiles(new Set());
+    setRootFiles([]);
+    onFileSelect({ path: '', content: '', language: 'plaintext' });
+    onFileChange();
   };
 
   const getFileLanguage = (filename) => {
@@ -191,10 +232,72 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
     return languageMap[ext] || 'plaintext';
   };
 
+  const handleDeleteProject = async (projectPath) => {
+    setProjectToDelete(projectPath);
+    setDeleteProjectConfirmOpen(true);
+  };
+
+  const handleDeleteProjectConfirm = async () => {
+    if (!projectToDelete) return;
+
+    try {
+      // 删除项目文件夹
+      await deletePath(projectToDelete);
+      
+      // 关闭相关的文件
+      setOpenFiles(prev => {
+        const newSet = new Set();
+        prev.forEach(path => {
+          if (!path.startsWith(projectToDelete + '/')) {
+            newSet.add(path);
+          }
+        });
+        return newSet;
+      });
+
+      // 如果没有打开的文件，显示空编辑器
+      if (openFiles.size === 0) {
+        onFileSelect({ path: '', content: '', language: 'plaintext' });
+      }
+
+      onFileChange();
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+    }
+    setDeleteProjectConfirmOpen(false);
+    setProjectToDelete(null);
+  };
+
+  const handleClearAll = async () => {
+    setClearConfirmOpen(true);
+  };
+
+  const handleClearConfirm = async () => {
+    try {
+      setClearConfirmOpen(false);
+      // 重置状态，立即清空界面显示
+      setExpandedFolders(new Set());
+      setOpenFiles(new Set());
+      setRootFiles([]);
+      onFileSelect({ path: '', content: '', language: 'plaintext' });
+      
+      // 然后在后台删除文件
+      for (const file of files) {
+        await deletePath(file.path);
+      }
+      
+      // 最后刷新文件列表
+      onFileChange();
+    } catch (error) {
+      console.error('Failed to clear project:', error);
+    }
+  };
+
   const renderFileList = () => {
     const renderFileItem = (file, level = 0) => {
       const isDirectory = file.type === 'directory';
       const isExpanded = expandedFolders.has(file.path);
+      const isOpen = openFiles.has(file.path);
       const childFiles = isDirectory ? files.filter(f => {
         const parentPath = file.path + '/';
         return f.path.startsWith(parentPath) && f.path.slice(parentPath.length).split('/').length === 1;
@@ -209,6 +312,7 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
             sx={{
               pl: 1 + level * 2,
               py: 0.5,
+              bgcolor: isOpen ? 'action.selected' : 'inherit',
               '&:hover': {
                 bgcolor: 'action.hover',
                 '& .actions': {
@@ -248,23 +352,39 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
                 sx: { fontSize: '0.75rem' }
               }}
             />
-            <IconButton
-              className="actions"
-              edge="end"
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleContextMenu(e, file);
-              }}
-              sx={{
-                opacity: 0,
-                transition: 'opacity 0.2s',
-                padding: 0.5,
-                margin: '0 4px'
-              }}
-            >
-              <MoreIcon sx={{ fontSize: 18 }} />
-            </IconButton>
+            {isDirectory && (
+              isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />
+            )}
+            {isOpen && (
+              <IconButton
+                size="small"
+                onClick={(e) => handleCloseFile(e, file.path)}
+                sx={{ ml: 1 }}
+              >
+                <CloseIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+            )}
+            {!isDirectory && (
+              <IconButton
+                className="actions"
+                edge="end"
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteClick();
+                  setSelectedFile(file);
+                }}
+                sx={{
+                  opacity: 0,
+                  transition: 'opacity 0.2s',
+                  padding: 0.5,
+                  margin: '0 4px',
+                  color: 'error.main',
+                }}
+              >
+                <DeleteForeverIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            )}
           </ListItem>
           {isDirectory && isExpanded && childFiles.map(childFile => renderFileItem(childFile, level + 1))}
         </React.Fragment>
@@ -289,18 +409,45 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
           p: 0.5, 
           borderBottom: 1, 
           borderColor: 'divider',
-          flexShrink: 0
+          flexShrink: 0,
+          display: 'flex',
+          gap: 1
         }}
       >
         <Button
-          fullWidth
           variant="contained"
           size="small"
           startIcon={<UploadIcon />}
           onClick={onUploadClick}
+          sx={{ flex: 1 }}
         >
           Upload
         </Button>
+        <Tooltip title="Reset View">
+          <IconButton
+            size="small"
+            onClick={handleResetProject}
+            sx={{ 
+              bgcolor: 'background.paper',
+              '&:hover': { bgcolor: 'action.hover' }
+            }}
+          >
+            <RefreshIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Clear All Files">
+          <IconButton
+            size="small"
+            onClick={handleClearAll}
+            sx={{ 
+              bgcolor: 'background.paper',
+              color: 'error.main',
+              '&:hover': { bgcolor: 'error.light', color: 'white' }
+            }}
+          >
+            <DeleteSweepIcon />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {isProcessing ? (
@@ -341,18 +488,49 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
 
       <Dialog
         open={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
-        sx={{ zIndex: 1301 }}
+        onClose={handleClose}
       >
-        <DialogTitle>Delete File</DialogTitle>
+        <DialogTitle>Confirm Delete</DialogTitle>
         <DialogContent>
           <Typography>
-            Delete "{selectedFile?.name}"?
+            Are you sure you want to delete {selectedFile?.name}?
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
-          <Button onClick={handleDelete} color="error">Delete</Button>
+          <Button onClick={handleClose}>Cancel</Button>
+          <Button onClick={handleDeleteConfirm} color="error">Delete</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={deleteProjectConfirmOpen}
+        onClose={() => setDeleteProjectConfirmOpen(false)}
+      >
+        <DialogTitle>Delete Project</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete the entire project "{projectToDelete}"? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteProjectConfirmOpen(false)}>Cancel</Button>
+          <Button onClick={handleDeleteProjectConfirm} color="error">Delete Project</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={clearConfirmOpen}
+        onClose={() => setClearConfirmOpen(false)}
+      >
+        <DialogTitle>Clear All Files</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete all files? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setClearConfirmOpen(false)}>Cancel</Button>
+          <Button onClick={handleClearConfirm} color="error">Clear All</Button>
         </DialogActions>
       </Dialog>
     </Box>
