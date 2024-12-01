@@ -1,16 +1,32 @@
 import axios from 'axios';
-import { API_URL } from '../config';
+import { API_URL, UPLOAD_CONFIG, API_ENDPOINTS, ERROR_MESSAGES } from '../config';
 
 // Create axios instance with custom config
 const apiClient = axios.create({
   baseURL: API_URL,
-  timeout: 60000,
+  timeout: UPLOAD_CONFIG.timeout,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
   },
   withCredentials: false
 });
+
+// Add request interceptor for debugging
+apiClient.interceptors.request.use(
+  config => {
+    console.log('API Request:', {
+      url: config.url,
+      method: config.method,
+      data: config.data
+    });
+    return config;
+  },
+  error => {
+    console.error('Request Error:', error);
+    return Promise.reject(error);
+  }
+);
 
 // Add response interceptor for debugging
 apiClient.interceptors.response.use(
@@ -35,169 +51,228 @@ apiClient.interceptors.response.use(
   }
 );
 
+// Retry mechanism for failed requests
+const retryRequest = async (fn, retries = UPLOAD_CONFIG.retryAttempts) => {
+  try {
+    return await fn();
+  } catch (error) {
+    if (retries > 0 && !error.response) {
+      await new Promise(resolve => setTimeout(resolve, UPLOAD_CONFIG.retryDelay));
+      return retryRequest(fn, retries - 1);
+    }
+    throw error;
+  }
+};
+
 // File system operations
 export const uploadFile = async (file, path = '') => {
   try {
-    console.log(`Starting upload for file: ${file.name} (size: ${file.size} bytes)`);
+    if (file.size > UPLOAD_CONFIG.maxFileSize) {
+      throw new Error(ERROR_MESSAGES.invalidFile);
+    }
+
+    // 处理文件路径和名称
+    const fullPath = file.webkitRelativePath || file.name;
+    const pathParts = fullPath.split('/');
+    const filename = pathParts.pop();  // 获取文件名
+    const dirPath = pathParts.join('/');  // 获取目录路径
+
+    // 去掉文件名中的 test_ 前缀
+    const newFilename = filename.startsWith('test_') ? filename.substring(5) : filename;
+
+    // 构建新的完整路径
+    const newPath = dirPath ? `${dirPath}/${newFilename}` : newFilename;
+
+    // 创建新的 File 对象
+    const newFile = new File([file], newPath, { type: file.type });
+
     const formData = new FormData();
-    formData.append('file', file);
-    formData.append('path', path);
+    formData.append('file', newFile);
 
-    console.log('Upload request:', {
-      url: '/api/upload',
-      method: 'POST',
-      data: {
-        file: file.name,
-        path: path
-      }
-    });
+    const response = await retryRequest(() => 
+      apiClient.post(API_ENDPOINTS.upload, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          console.log(`Upload progress: ${percentCompleted}%`);
+        },
+      })
+    );
 
-    const response = await apiClient.post('/api/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-        'Accept': 'application/json'
-      },
-      maxContentLength: Infinity,
-      maxBodyLength: Infinity,
-      timeout: 300000, // 5 minutes timeout for large files
-      onUploadProgress: (progressEvent) => {
-        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-        console.log(`Upload progress for ${file.name}: ${percentCompleted}%`);
-      },
-    });
-
-    console.log(`Upload successful for ${file.name}:`, response.data);
     return response.data;
   } catch (error) {
-    console.error('Upload error details:', {
-      file: file.name,
-      size: file.size,
-      path: path,
-      error: error.message,
-      response: error.response?.data,
-      status: error.response?.status
-    });
-    
+    console.error('Upload error:', error);
     if (error.response) {
-      throw new Error(`Upload failed (${error.response.status}): ${error.response.data?.error || error.response.statusText}`);
+      throw new Error(error.response.data?.error || ERROR_MESSAGES.uploadFailed);
     } else if (error.request) {
-      throw new Error(`Network error: Cannot connect to server. Please check if the server is running.`);
+      throw new Error(ERROR_MESSAGES.networkError);
     } else {
-      throw new Error(`Upload failed: ${error.message}`);
+      throw new Error(error.message || ERROR_MESSAGES.uploadFailed);
     }
   }
 };
 
-// Other API functions
 export const listFiles = async (path = '') => {
   try {
-    console.log('API: Listing files, path:', path);
-    const response = await apiClient.get('/api/files', { 
-      params: { path },
-      headers: {
-        'Accept': 'application/json'
-      }
-    });
-    
-    if (response.data && Array.isArray(response.data.files)) {
-      console.log('API: Files loaded successfully:', response.data.files);
-      return response.data.files;
-    } else {
-      console.error('API: Invalid response format:', response.data);
-      return [];
-    }
+    const response = await retryRequest(() =>
+      apiClient.get(API_ENDPOINTS.files, { params: { path } })
+    );
+    return response.data.files || [];
   } catch (error) {
-    console.error('API: List files error:', error);
-    if (error.response) {
-      console.error('API: Error response:', error.response.data);
-    }
+    console.error('List files error:', error);
     return [];
   }
 };
 
-export const readFile = async (path) => {
+export const getFileContent = async (path) => {
   try {
-    console.log('Reading file:', path);
-    const response = await apiClient.get('/api/files/read', { params: { path } });
-    console.log('File read response:', response.data);
-    return response.data;
+    const response = await retryRequest(() =>
+      apiClient.get(API_ENDPOINTS.fileContent, { params: { path } })
+    );
+    return response.data.content;
   } catch (error) {
-    console.error('Read file error:', error);
-    throw error;
+    console.error('Get file content error:', error);
+    throw new Error(error.response?.data?.error || ERROR_MESSAGES.serverError);
   }
 };
 
 export const deletePath = async (path) => {
   try {
-    console.log(`Deleting path: ${path}`);
-    const response = await apiClient.delete('/api/files', {
-      params: { path },
-      headers: {
-        'Accept': 'application/json'
-      }
-    });
-    console.log('Delete response:', response.data);
+    const response = await retryRequest(() =>
+      apiClient.delete(API_ENDPOINTS.files, { params: { path } })
+    );
     return response.data;
   } catch (error) {
-    console.error('Delete error details:', {
-      error: error.message,
-      response: error.response?.data,
-      request: error.request ? 'Request was made but no response' : 'Request setup failed',
-      config: error.config,
-      status: error.response?.status,
-      statusText: error.response?.statusText
-    });
-    
+    console.error('Delete error:', error);
     if (error.response) {
-      throw new Error(`Server error (${error.response.status}): ${error.response.data?.error || error.response.statusText}`);
+      throw new Error(error.response.data?.error || ERROR_MESSAGES.serverError);
     } else if (error.request) {
-      throw new Error('Network error: Cannot connect to server. Please check if the server is running.');
+      throw new Error(ERROR_MESSAGES.networkError);
     } else {
-      throw new Error(`Request failed: ${error.message}`);
+      throw new Error(error.message);
     }
   }
 };
 
-export const searchFiles = async (query) => {
+export const getRelevantFiles = async (query) => {
   try {
-    const response = await apiClient.get('/api/files/search', { params: { query } });
-    return response.data.results || [];
+    const response = await retryRequest(() =>
+      apiClient.post(API_ENDPOINTS.relevantFiles, { query })
+    );
+    return response.data || [];
   } catch (error) {
+    console.error('Get relevant files error:', error);
     return [];
   }
 };
 
-// AI-related functions
-export const chat = async (messages) => {
+export const recordChange = async (path, type) => {
   try {
-    console.log('Sending chat request:', { messages });
-    const response = await apiClient.post('/api/chat', { messages }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
-    });
-    console.log('Chat response:', response.data);
+    const response = await retryRequest(() =>
+      apiClient.post(API_ENDPOINTS.changes, { path, type })
+    );
     return response.data;
   } catch (error) {
-    console.error('Chat error details:', {
-      error: error.message,
-      response: error.response?.data,
-      status: error.response?.status,
-      request: error.request ? 'Request was made but no response' : 'Request setup failed'
-    });
-    throw error;
+    console.error('Record change error:', error);
+    throw new Error(error.response?.data?.error || ERROR_MESSAGES.serverError);
   }
 };
 
-export const analyzeCode = async (code) => {
-  const response = await apiClient.post('/api/analyze', { code });
-  return response.data;
+export const getProjectStructure = async () => {
+  try {
+    const response = await retryRequest(() =>
+      apiClient.get(API_ENDPOINTS.fileStructure)
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Get project structure error:', error);
+    throw new Error(error.response?.data?.error || ERROR_MESSAGES.serverError);
+  }
 };
 
-export const generateCode = async (prompt) => {
-  const response = await apiClient.post('/api/generate', { prompt });
-  return response.data;
+// Chat operations
+export const sendChatMessage = async (messages) => {
+  try {
+    const response = await retryRequest(() =>
+      apiClient.post(API_ENDPOINTS.chat, { messages })
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Chat error:', error);
+    if (error.response) {
+      throw new Error(error.response.data?.error || ERROR_MESSAGES.serverError);
+    } else if (error.request) {
+      throw new Error(ERROR_MESSAGES.networkError);
+    } else {
+      throw new Error(error.message);
+    }
+  }
+};
+
+// Code analysis and generation
+export const analyzeCode = async (code, options = {}) => {
+  try {
+    const response = await retryRequest(() =>
+      apiClient.post(API_ENDPOINTS.analyze, { code, ...options })
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Code analysis error:', error);
+    throw new Error(error.response?.data?.error || ERROR_MESSAGES.analyzeError);
+  }
+};
+
+export const generateCode = async (prompt, options = {}) => {
+  try {
+    const response = await retryRequest(() =>
+      apiClient.post(API_ENDPOINTS.generate, { prompt, ...options })
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Code generation error:', error);
+    throw new Error(error.response?.data?.error || ERROR_MESSAGES.generateError);
+  }
+};
+
+// Version control operations
+export const undoAction = async () => {
+  try {
+    const response = await retryRequest(() =>
+      apiClient.post(API_ENDPOINTS.undo)
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Undo error:', error);
+    throw new Error(error.response?.data?.error || ERROR_MESSAGES.versionControlError);
+  }
+};
+
+export const redoAction = async () => {
+  try {
+    const response = await retryRequest(() =>
+      apiClient.post(API_ENDPOINTS.redo)
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Redo error:', error);
+    throw new Error(error.response?.data?.error || ERROR_MESSAGES.versionControlError);
+  }
+};
+
+export const resetProject = async () => {
+  try {
+    const response = await retryRequest(() =>
+      apiClient.post(API_ENDPOINTS.reset)
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Reset error:', error);
+    throw new Error(error.response?.data?.error || ERROR_MESSAGES.versionControlError);
+  }
 };
 
 export default apiClient; 

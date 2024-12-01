@@ -27,7 +27,8 @@ import {
   Redo as RedoIcon,
   RestartAlt as ResetIcon,
 } from '@mui/icons-material';
-import { chat } from '../services/api';
+import { API_ENDPOINTS, ERROR_MESSAGES } from '../config';
+import { sendChatMessage, undoAction, redoAction, resetProject } from '../services/api';
 
 const Message = ({ message, isBot, onRunCode }) => (
   <Box
@@ -126,12 +127,13 @@ function ChatPanel({ onSendCode, onAnalyze, onGenerate, isAnalyzing }) {
         content: input
       });
 
-      const response = await chat(apiMessages);
-      const botResponse = response.choices?.[0]?.message?.content;
+      const response = await sendChatMessage(apiMessages);
       
-      if (!botResponse) {
-        throw new Error('Invalid response format from AI service');
+      if (!response || !response.choices?.[0]?.message?.content) {
+        throw new Error(ERROR_MESSAGES.serverError);
       }
+      
+      const botResponse = response.choices[0].message.content;
       
       // Check if the response contains code
       const codeMatch = botResponse.match(/```(?:[\w]*\n)?([\s\S]*?)```/);
@@ -171,7 +173,7 @@ function ChatPanel({ onSendCode, onAnalyze, onGenerate, isAnalyzing }) {
       console.error('Error:', error);
       setMessages(prev => [...prev, {
         id: messages.length + 2,
-        content: error.message || 'Network error. Please check your connection.',
+        content: error.message || ERROR_MESSAGES.networkError,
         isBot: true,
         type: 'text',
       }]);
@@ -189,25 +191,25 @@ function ChatPanel({ onSendCode, onAnalyze, onGenerate, isAnalyzing }) {
 
   const handleUndo = async () => {
     try {
-      await fetch('/api/undo', { method: 'POST' });
+      await undoAction();
     } catch (error) {
-      console.error('Error undoing:', error);
+      console.error(ERROR_MESSAGES.serverError, error);
     }
   };
 
   const handleRedo = async () => {
     try {
-      await fetch('/api/redo', { method: 'POST' });
+      await redoAction();
     } catch (error) {
-      console.error('Error redoing:', error);
+      console.error(ERROR_MESSAGES.serverError, error);
     }
   };
 
   const handleReset = async () => {
     try {
-      await fetch('/api/reset', { method: 'POST' });
+      await resetProject();
     } catch (error) {
-      console.error('Error resetting:', error);
+      console.error(ERROR_MESSAGES.serverError, error);
     }
   };
 

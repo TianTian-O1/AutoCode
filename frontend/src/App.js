@@ -28,7 +28,8 @@ import FilePanel from './components/FilePanel';
 import SearchPanel from './components/SearchPanel';
 import AppsPanel from './components/AppsPanel';
 import UploadPanel from './components/UploadPanel';
-import * as api from './services/api';
+import { API_ENDPOINTS, ERROR_MESSAGES } from './config';
+import { listFiles, undoAction, redoAction, resetProject } from './services/api';
 
 const darkTheme = createTheme({
   palette: {
@@ -53,12 +54,12 @@ function App() {
     if (isLoadingFiles) return;
     setIsLoadingFiles(true);
     try {
-      const fileList = await api.listFiles();
+      const fileList = await listFiles();
       if (Array.isArray(fileList)) {
         setFiles(fileList);
       }
     } catch (error) {
-      console.error('Failed to load files:', error);
+      console.error(ERROR_MESSAGES.serverError, error);
       setFiles([]);
     } finally {
       setIsLoadingFiles(false);
@@ -117,28 +118,28 @@ function App() {
 
   const handleUndo = async () => {
     try {
-      await fetch('/api/undo', { method: 'POST' });
-      loadFiles(); // 刷新文件列表
+      await undoAction();
+      loadFiles(); // Refresh file list
     } catch (error) {
-      console.error('Error undoing:', error);
+      console.error(ERROR_MESSAGES.serverError, error);
     }
   };
 
   const handleRedo = async () => {
     try {
-      await fetch('/api/redo', { method: 'POST' });
-      loadFiles(); // 刷新文件列表
+      await redoAction();
+      loadFiles(); // Refresh file list
     } catch (error) {
-      console.error('Error redoing:', error);
+      console.error(ERROR_MESSAGES.serverError, error);
     }
   };
 
   const handleReset = async () => {
     try {
-      await fetch('/api/reset', { method: 'POST' });
-      loadFiles(); // 刷新文件列表
+      await resetProject();
+      loadFiles(); // Refresh file list
     } catch (error) {
-      console.error('Error resetting:', error);
+      console.error(ERROR_MESSAGES.serverError, error);
     }
   };
 

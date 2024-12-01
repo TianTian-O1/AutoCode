@@ -16,7 +16,8 @@ import {
   InsertDriveFileOutlined,
   OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
-import * as api from '../services/api';
+import { API_ENDPOINTS, ERROR_MESSAGES } from '../config';
+import { getFileContent, getRelevantFiles } from '../services/api';
 
 function SearchPanel({ onFileSelect }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -29,11 +30,10 @@ function SearchPanel({ onFileSelect }) {
 
     setLoading(true);
     try {
-      // You'll need to implement this API endpoint
-      const results = await api.searchFiles(searchTerm);
+      const results = await getRelevantFiles(searchTerm);
       setSearchResults(results || []);
     } catch (error) {
-      console.error('Search failed:', error);
+      console.error(ERROR_MESSAGES.serverError, error);
       setSearchResults([]);
     } finally {
       setLoading(false);
@@ -42,14 +42,14 @@ function SearchPanel({ onFileSelect }) {
 
   const handleFileClick = async (file) => {
     try {
-      const content = await api.readFile(file.path);
+      const content = await getFileContent(file.path);
       onFileSelect({
         ...file,
         content,
         language: getFileLanguage(file.name),
       });
     } catch (error) {
-      console.error('Failed to read file:', error);
+      console.error(ERROR_MESSAGES.serverError, error);
     }
   };
 

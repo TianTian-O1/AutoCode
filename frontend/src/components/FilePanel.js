@@ -41,8 +41,8 @@ import {
   DeleteForever as DeleteForeverIcon,
   DeleteSweep as DeleteSweepIcon,
 } from '@mui/icons-material';
-import { deletePath } from '../services/api';
-import * as api from '../services/api';
+import { API_ENDPOINTS, ERROR_MESSAGES } from '../config';
+import { deletePath, getFileContent } from '../services/api';
 
 const getFileIcon = (filename) => {
   const ext = filename.split('.').pop().toLowerCase();
@@ -93,6 +93,7 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState(new Set());
   const [rootFiles, setRootFiles] = useState([]);
+  const [filesByPath, setFilesByPath] = useState({});
   const [isProcessing, setIsProcessing] = useState(true);
   const [openFiles, setOpenFiles] = useState(new Set());
   const [deleteProjectConfirmOpen, setDeleteProjectConfirmOpen] = useState(false);
@@ -103,15 +104,73 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
   useEffect(() => {
     const processFiles = () => {
       setIsProcessing(true);
+      console.log('Raw files:', files);  // 打印原始文件列表
+      
       // Process files in the next tick to avoid blocking the UI
       setTimeout(() => {
-        const rootLevel = files.filter(f => !f.path.includes('/'));
+        // 首先按路径对文件进行分组
+        const filesByPath = {};
+        files.forEach(file => {
+          if (!file || !file.path) {
+            console.log('Invalid file:', file);  // 打印无效的文件
+            return;
+          }
+          
+          console.log('Processing file:', file.path);  // 打印正在处理的文件路径
+          
+          const parts = file.path.split('/');
+          console.log('Path parts:', parts);  // 打印路径分割结果
+          
+          let currentPath = '';
+          
+          // 创建目录结构
+          for (let i = 0; i < parts.length - 1; i++) {
+            const part = parts[i];
+            const parentPath = currentPath;
+            currentPath = currentPath ? `${currentPath}/${part}` : part;
+            
+            console.log('Creating directory:', {  // 打印目录创建信息
+              part,
+              currentPath,
+              parentPath
+            });
+            
+            if (!filesByPath[currentPath]) {
+              filesByPath[currentPath] = {
+                name: part,
+                path: currentPath,
+                type: 'directory',
+                parent: parentPath || null
+              };
+            }
+          }
+          
+          // 添加文件
+          filesByPath[file.path] = {
+            ...file,
+            parent: currentPath || null
+          };
+        });
+
+        // 获取根级别的文件和目录
+        const rootLevel = Object.values(filesByPath).filter(f => !f.parent);
+        
+        // 排序：目录在前，文件在后，同类型按名称排序
         rootLevel.sort((a, b) => {
           if (a.type === b.type) {
             return a.name.localeCompare(b.name);
           }
           return a.type === 'directory' ? -1 : 1;
         });
+
+        console.log('Processed data:', {  // 打印处理后的数据
+          filesByPath,
+          rootLevel,
+          fileCount: Object.keys(filesByPath).length,
+          rootCount: rootLevel.length
+        });
+        
+        setFilesByPath(filesByPath);
         setRootFiles(rootLevel);
         setIsProcessing(false);
       }, 0);
@@ -147,7 +206,7 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
       await deletePath(selectedFile.path);
       onFileChange();
     } catch (error) {
-      console.error('Failed to delete file:', error);
+      console.error(ERROR_MESSAGES.serverError, error);
     }
     setDeleteConfirmOpen(false);
     handleClose();
@@ -164,26 +223,27 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
         }
         return newSet;
       });
-    } else {
-      try {
-        console.log('Reading file:', file.path);
-        const response = await api.readFile(file.path);
-        const language = getFileLanguage(file.name);
-        console.log('File read response:', response);
-        
-        if (!response || !response.content) {
-          throw new Error('Invalid file content received');
-        }
-        
-        setOpenFiles(prev => new Set(prev).add(file.path));
-        onFileSelect({
-          ...file,
-          content: response.content,
-          language
-        });
-      } catch (error) {
-        console.error('Failed to read file:', error);
+      return;
+    }
+
+    try {
+      console.log('Reading file:', file.path);
+      const content = await getFileContent(file.path);
+      const language = getFileLanguage(file.name);
+      console.log('File content received');
+      
+      if (!content) {
+        throw new Error(ERROR_MESSAGES.serverError);
       }
+      
+      setOpenFiles(prev => new Set(prev).add(file.path));
+      onFileSelect({
+        ...file,
+        content,
+        language
+      });
+    } catch (error) {
+      console.error(ERROR_MESSAGES.serverError, error);
     }
   };
 
@@ -262,7 +322,7 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
 
       onFileChange();
     } catch (error) {
-      console.error('Failed to delete project:', error);
+      console.error(ERROR_MESSAGES.serverError, error);
     }
     setDeleteProjectConfirmOpen(false);
     setProjectToDelete(null);
@@ -275,33 +335,53 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
   const handleClearConfirm = async () => {
     try {
       setClearConfirmOpen(false);
-      // 重置状态，立即清空界面显示
+      // Reset state immediately to clear the UI
       setExpandedFolders(new Set());
       setOpenFiles(new Set());
       setRootFiles([]);
       onFileSelect({ path: '', content: '', language: 'plaintext' });
       
-      // 然后在后台删除文件
+      // Delete files in the background
       for (const file of files) {
         await deletePath(file.path);
       }
       
-      // 最后刷新文件列表
+      // Refresh file list
       onFileChange();
     } catch (error) {
-      console.error('Failed to clear project:', error);
+      console.error(ERROR_MESSAGES.serverError, error);
     }
   };
 
   const renderFileList = () => {
+    console.log('Rendering file list:', {  // 打印渲染信息
+      rootFiles,
+      filesByPath,
+      expandedFolders: Array.from(expandedFolders)
+    });
+    
     const renderFileItem = (file, level = 0) => {
+      console.log('Rendering item:', {  // 打印每个项目的渲染信息
+        file,
+        level,
+        isDirectory: file.type === 'directory',
+        isExpanded: expandedFolders.has(file.path)
+      });
+      
       const isDirectory = file.type === 'directory';
       const isExpanded = expandedFolders.has(file.path);
       const isOpen = openFiles.has(file.path);
-      const childFiles = isDirectory ? files.filter(f => {
-        const parentPath = file.path + '/';
-        return f.path.startsWith(parentPath) && f.path.slice(parentPath.length).split('/').length === 1;
-      }) : [];
+      
+      // 获取子文件和目录
+      const children = Object.values(filesByPath).filter(f => f.parent === file.path);
+      console.log('Children for', file.path, ':', children);  // 打印子项信息
+      
+      children.sort((a, b) => {
+        if (a.type === b.type) {
+          return a.name.localeCompare(b.name);
+        }
+        return a.type === 'directory' ? -1 : 1;
+      });
 
       return (
         <React.Fragment key={file.path}>
@@ -339,7 +419,7 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
             </ListItemIcon>
             <ListItemText
               primary={file.name}
-              secondary={isDirectory ? `${childFiles.length} items` : `${(file.size / 1024).toFixed(1)} KB`}
+              secondary={isDirectory ? `${children.length} items` : `${(file.size / 1024).toFixed(1)} KB`}
               primaryTypographyProps={{
                 variant: 'body2',
                 sx: {
@@ -386,7 +466,7 @@ const FilePanel = ({ files = [], onFileSelect, onUploadClick, onFileChange }) =>
               </IconButton>
             )}
           </ListItem>
-          {isDirectory && isExpanded && childFiles.map(childFile => renderFileItem(childFile, level + 1))}
+          {isDirectory && isExpanded && children.map(child => renderFileItem(child, level + 1))}
         </React.Fragment>
       );
     };
