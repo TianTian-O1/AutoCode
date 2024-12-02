@@ -14,15 +14,9 @@ export const API_ENDPOINTS = {
   upload: '/api/upload',
   files: '/api/files',
   fileContent: '/api/files/content',
-  fileStructure: '/api/files/structure',
-  chat: '/api/chat',
-  relevantFiles: '/api/files/relevant',
-  changes: '/api/files/change',
-  undo: '/api/undo',
-  redo: '/api/redo',
   reset: '/api/reset',
-  analyze: '/api/analyze',
-  generate: '/api/generate',
+  chat: '/api/chat',
+  analyze: '/api/analyze-code'
 };
 
 // Error Messages

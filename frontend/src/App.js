@@ -10,28 +10,28 @@ import {
   ListItem,
   Tooltip,
   ButtonGroup,
+  CircularProgress,
+  Typography,
 } from '@mui/material';
 import {
-  Menu as MenuIcon,
   FolderOutlined,
   SearchOutlined,
   AppsOutlined,
   CloudUploadOutlined,
   GitHub as GitHubIcon,
-  Undo as UndoIcon,
-  Redo as RedoIcon,
   RestartAlt as ResetIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import Editor from './components/Editor';
-import ChatPanel from './components/ChatPanel';
 import FilePanel from './components/FilePanel';
 import SearchPanel from './components/SearchPanel';
+import ChatPanel from './components/ChatPanel';
 import AppsPanel from './components/AppsPanel';
 import UploadPanel from './components/UploadPanel';
-import { API_ENDPOINTS, ERROR_MESSAGES } from './config';
-import { listFiles, undoAction, redoAction, resetProject } from './services/api';
+import { listFiles, uploadFile, resetProject, getFileContent } from './services/api';
+import { ERROR_MESSAGES } from './config';
 
-const darkTheme = createTheme({
+const theme = createTheme({
   palette: {
     mode: 'dark',
   },
@@ -41,14 +41,25 @@ const DRAWER_WIDTH = 48;
 const PANEL_WIDTH = 240;
 
 function App() {
-  const [code, setCode] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedMenu, setSelectedMenu] = useState(null);
-  const [openFiles, setOpenFiles] = useState([]);
-  const [activeFile, setActiveFile] = useState(null);
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [files, setFiles] = useState([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+  const [openFiles, setOpenFiles] = useState([]);
+  const [activeFile, setActiveFile] = useState(null);
+  const [code, setCode] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [fileContentCache, setFileContentCache] = useState({});
+  const [isLoadingFileContent, setIsLoadingFileContent] = useState(false);
+  const [editorOptions, setEditorOptions] = useState({
+    fontSize: 14,
+    tabSize: 2,
+    minimap: { enabled: true },
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    lineNumbers: 'on',
+    wordWrap: 'on',
+  });
 
   const loadFiles = async () => {
     if (isLoadingFiles) return;
@@ -65,6 +76,10 @@ function App() {
       setIsLoadingFiles(false);
     }
   };
+
+  useEffect(() => {
+    loadFiles();
+  }, []);
 
   const handleMenuSelect = (menuId) => {
     const isClosing = selectedMenu === menuId;
@@ -83,26 +98,57 @@ function App() {
     }
   };
 
-  const handleFileSelect = useCallback((file) => {
+  const handleFileSelect = useCallback(async (file) => {
+    if (!file || !file.path) {
+      console.error('Invalid file object:', file);
+      return;
+    }
+
     const existingFile = openFiles.find(f => f.path === file.path);
     if (existingFile) {
       setActiveFile(existingFile);
       setCode(existingFile.content);
     } else {
-      const newFile = { ...file, id: Date.now() };
-      setOpenFiles(prev => [...prev, newFile]);
-      setActiveFile(newFile);
-      setCode(file.content || '');
+      try {
+        setIsLoadingFileContent(true);
+        let content = fileContentCache[file.path];
+        if (!content) {
+          console.log('Loading file content for:', file.path);
+          content = await getFileContent(file.path);
+          console.log('Loaded content:', content ? content.substring(0, 100) + '...' : 'null');
+          if (!content) {
+            throw new Error('Failed to load file content');
+          }
+          setFileContentCache(prev => ({
+            ...prev,
+            [file.path]: content
+          }));
+        }
+        const newFile = { 
+          ...file, 
+          id: Date.now(),
+          content: content
+        };
+        console.log('Creating new file object:', newFile);
+        setOpenFiles(prev => [...prev, newFile]);
+        setActiveFile(newFile);
+        setCode(content);
+      } catch (error) {
+        console.error('Error loading file content:', error);
+      } finally {
+        setIsLoadingFileContent(false);
+      }
     }
-  }, [openFiles]);
+  }, [openFiles, fileContentCache]);
 
   const handleFileClose = useCallback((file) => {
     setOpenFiles(prev => prev.filter(f => f.path !== file.path));
     if (activeFile && activeFile.path === file.path) {
       const remainingFiles = openFiles.filter(f => f.path !== file.path);
       if (remainingFiles.length > 0) {
-        setActiveFile(remainingFiles[remainingFiles.length - 1]);
-        setCode(remainingFiles[remainingFiles.length - 1].content || '');
+        const lastFile = remainingFiles[remainingFiles.length - 1];
+        setActiveFile(lastFile);
+        setCode(lastFile.content || '');
       } else {
         setActiveFile(null);
         setCode('');
@@ -111,35 +157,48 @@ function App() {
   }, [activeFile, openFiles]);
 
   const handleUploadSuccess = useCallback(() => {
-    setSelectedMenu('files');
-    setTimeout(loadFiles, 100);
+    loadFiles();
     setUploadDialogOpen(false);
   }, []);
 
-  const handleUndo = async () => {
+  const handleAnalyze = async () => {
+    if (!activeFile) return;
+    setIsAnalyzing(true);
     try {
-      await undoAction();
-      loadFiles(); // Refresh file list
+      // 实现代码分析功能
+      console.log('Analyzing code:', activeFile.path);
     } catch (error) {
-      console.error(ERROR_MESSAGES.serverError, error);
+      console.error(ERROR_MESSAGES.analyzeError, error);
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
-  const handleRedo = async () => {
+  const handleGenerate = async () => {
     try {
-      await redoAction();
-      loadFiles(); // Refresh file list
+      // 实现代码生成功能
+      console.log('Generating code');
     } catch (error) {
-      console.error(ERROR_MESSAGES.serverError, error);
+      console.error(ERROR_MESSAGES.generateError, error);
     }
   };
 
   const handleReset = async () => {
+    if (!window.confirm('确定要清空项目吗？此操作不可恢复。')) {
+      return;
+    }
+
     try {
+      setIsLoadingFiles(true);
       await resetProject();
-      loadFiles(); // Refresh file list
+      setActiveFile(null);
+      setOpenFiles([]);
+      setCode('');
+      await loadFiles();
     } catch (error) {
       console.error(ERROR_MESSAGES.serverError, error);
+    } finally {
+      setIsLoadingFiles(false);
     }
   };
 
@@ -154,6 +213,12 @@ function App() {
       onClick: () => setUploadDialogOpen(true)
     },
     { id: 'github', icon: <GitHubIcon />, text: 'GitHub' },
+    { 
+      id: 'reset', 
+      icon: <ResetIcon />, 
+      text: 'Reset Project',
+      onClick: handleReset
+    },
   ];
 
   const renderPanel = () => {
@@ -183,7 +248,7 @@ function App() {
   };
 
   return (
-    <ThemeProvider theme={darkTheme}>
+    <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box sx={{ height: '100vh', display: 'flex', overflow: 'hidden' }}>
         {/* Left Sidebar */}
@@ -202,33 +267,6 @@ function App() {
           }}
         >
           <List sx={{ p: 1 }}>
-            {/* 回退按钮组 */}
-            <ListItem disablePadding sx={{ mb: 1 }}>
-              <ButtonGroup
-                size="small"
-                orientation="vertical"
-                variant="outlined"
-                sx={{ width: '100%' }}
-              >
-                <Tooltip title="撤销" placement="right">
-                  <IconButton onClick={handleUndo}>
-                    <UndoIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="重做" placement="right">
-                  <IconButton onClick={handleRedo}>
-                    <RedoIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="重置" placement="right">
-                  <IconButton onClick={handleReset}>
-                    <ResetIcon />
-                  </IconButton>
-                </Tooltip>
-              </ButtonGroup>
-            </ListItem>
-
-            {/* 原有菜单项 */}
             {menuItems.map((item) => (
               <ListItem 
                 key={item.id} 
@@ -253,47 +291,146 @@ function App() {
           </List>
         </Drawer>
 
-        {/* Side Panel */}
-        <Box 
-          sx={{
-            width: selectedMenu ? PANEL_WIDTH : 0,
-            transition: 'width 0.2s',
-            overflow: 'hidden',
-            flexShrink: 0,
-          }}
-        >
-          <Box sx={{ 
-            width: PANEL_WIDTH,
-            height: '100%',
-            borderRight: 1,
-            borderColor: 'divider',
-            backgroundColor: 'background.paper',
-          }}>
-            {selectedMenu && renderPanel()}
+        {/* Left Panel */}
+        {selectedMenu && (
+          <Box
+            sx={{
+              width: PANEL_WIDTH,
+              flexShrink: 0,
+              backgroundColor: 'background.paper',
+              borderRight: 1,
+              borderColor: 'divider',
+              overflow: 'hidden',
+            }}
+          >
+            {renderPanel()}
           </Box>
-        </Box>
+        )}
 
         {/* Main Editor Area */}
         <Box sx={{ 
-          flexGrow: 1,
+          flexGrow: 1, 
           height: '100%',
-          mr: '400px', // Leave space for chat panel
+          mr: '400px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          bgcolor: 'background.default',
+          overflow: 'hidden',
         }}>
-          <Editor
-            value={code}
-            onChange={handleCodeChange}
-            language={activeFile?.language || 'plaintext'}
-            path={activeFile?.path}
-          />
+          {/* Editor Container */}
+          <Box sx={{ 
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            bgcolor: 'background.paper',
+            borderLeft: 1,
+            borderRight: 1,
+            borderColor: 'divider',
+          }}>
+            {/* Editor Tabs */}
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              p: 1, 
+              borderBottom: 1,
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+              minHeight: 48,
+            }}>
+              <ButtonGroup size="small" sx={{ mr: 1 }}>
+                {openFiles.map(file => (
+                  <Tooltip key={file.path} title={file.path}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleFileSelect(file)}
+                        color={activeFile?.path === file.path ? 'primary' : 'default'}
+                        sx={{ 
+                          fontSize: '0.75rem',
+                          px: 1,
+                          borderRadius: '4px 0 0 4px'
+                        }}
+                      >
+                        {file.name}
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleFileClose(file);
+                        }}
+                        sx={{ 
+                          fontSize: '0.75rem',
+                          p: 0.5,
+                          minWidth: 'auto',
+                          borderRadius: '0 4px 4px 0',
+                          '&:hover': {
+                            color: 'error.main'
+                          }
+                        }}
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  </Tooltip>
+                ))}
+              </ButtonGroup>
+              {isAnalyzing && <CircularProgress size={20} sx={{ ml: 1 }} />}
+            </Box>
+
+            {/* Editor */}
+            <Box sx={{ flexGrow: 1, position: 'relative' }}>
+              <Editor
+                value={code}
+                onChange={setCode}
+                language={activeFile?.language || 'plaintext'}
+                path={activeFile?.path}
+              />
+              {isLoadingFileContent && (
+                <Box sx={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  display: 'flex',
+                  justifyContent: 'center',
+                  p: 1,
+                  bgcolor: 'background.paper',
+                  borderBottom: 1,
+                  borderColor: 'divider',
+                }}>
+                  <CircularProgress size={20} sx={{ mr: 1 }} />
+                  <Typography variant="body2">Loading file content...</Typography>
+                </Box>
+              )}
+            </Box>
+          </Box>
         </Box>
 
         {/* Right Chat Panel */}
-        <ChatPanel
-          onSendCode={setCode}
-          onAnalyze={() => setIsAnalyzing(true)}
-          onGenerate={() => {}}
-          isAnalyzing={isAnalyzing}
-        />
+        <Box
+          sx={{
+            position: 'fixed',
+            right: 0,
+            top: 0,
+            width: '400px',
+            height: '100vh',
+            borderLeft: 1,
+            borderColor: 'divider',
+            backgroundColor: 'background.paper',
+          }}
+        >
+          <ChatPanel
+            onSendCode={setCode}
+            onAnalyze={handleAnalyze}
+            onGenerate={handleGenerate}
+            isAnalyzing={isAnalyzing}
+            activeFile={activeFile}
+            handleFileSelect={handleFileSelect}
+          />
+        </Box>
 
         {/* Upload Dialog */}
         {uploadDialogOpen && (
@@ -308,3 +445,4 @@ function App() {
 }
 
 export default App;
+
