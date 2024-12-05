@@ -5,9 +5,10 @@
  - using code:	gin.SetMode(gin.ReleaseMode)
 
 [GIN-debug] POST   /v1/chat/completions      --> main.handleChatCompletions (4 handlers)
-2024/12/05 11:47:21 Server starting on port 3000...
+[GIN-debug] GET    /v1/models                --> main.handleModels (4 handlers)
+2024/12/05 11:57:42 Server starting on port 3000...
 [GIN-debug] [WARNING] You trusted all proxies, this is NOT safe. We recommend you to set a value.
 Please check https://pkg.go.dev/github.com/gin-gonic/gin#readme-don-t-trust-all-proxies for details.
 [GIN-debug] Listening and serving HTTP on :3000
-[GIN] 2024/12/05 - 11:47:32 | 200 |     346.918µs |             ::1 | POST     "/v1/chat/completions"
-[GIN] 2024/12/05 - 11:47:42 | 200 |  708.029906ms |             ::1 | POST     "/v1/chat/completions"
+[GIN] 2024/12/05 - 11:57:53 | 200 |     501.041µs |             ::1 | POST     "/v1/chat/completions"
+[GIN] 2024/12/05 - 11:58:06 | 200 |  2.017797959s |             ::1 | POST     "/v1/chat/completions"
