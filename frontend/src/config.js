@@ -1,5 +1,7 @@
 // API Configuration
 export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+export const CURSOR_API_URL = process.env.REACT_APP_CURSOR_API_URL || 'http://localhost:3001';
+export const CURSOR_API_KEY = process.env.REACT_APP_CURSOR_API_KEY;
 
 // Upload Configuration
 export const UPLOAD_CONFIG = {
@@ -15,8 +17,19 @@ export const API_ENDPOINTS = {
   files: '/api/files',
   fileContent: '/api/files/content',
   reset: '/api/reset',
-  chat: '/api/chat',
+  chat: '/v1/chat/completions',
+  models: '/v1/models',
   analyze: '/api/analyze-code'
+};
+
+// Cursor API Configuration
+export const CURSOR_CONFIG = {
+  defaultModel: 'gpt-4o',
+  models: ['gpt-4o', 'claude-3-5-sonnet-20241022', 'gpt-4o-mini', 'o1-mini', 'o1-preview', 'cursor-small'],
+  timeout: 60000,
+  retryAttempts: 2,
+  retryDelay: 1000,
+  debug: true // 启用调试模式
 };
 
 // Error Messages
@@ -29,6 +42,8 @@ export const ERROR_MESSAGES = {
   analyzeError: 'Failed to analyze code. Please try again.',
   generateError: 'Failed to generate code. Please try again.',
   versionControlError: 'Version control operation failed. Please try again.',
+  authError: 'Authentication error. Please check your API key.',
+  timeoutError: 'Request timed out. Please try again.'
 };
 
 // Chat Configuration
@@ -37,6 +52,7 @@ export const CHAT_CONFIG = {
   maxContextLength: 8000,
   retryAttempts: 2,
   retryDelay: 1000,
+  debug: true // 启用调试模式
 };
 
 // File Types Configuration

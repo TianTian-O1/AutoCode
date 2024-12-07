@@ -1,5 +1,40 @@
 import axios from 'axios';
-import { API_URL, UPLOAD_CONFIG, API_ENDPOINTS, ERROR_MESSAGES } from '../config';
+import { API_URL, CURSOR_API_URL, CURSOR_API_KEY, UPLOAD_CONFIG, API_ENDPOINTS, ERROR_MESSAGES, CURSOR_CONFIG } from '../config';
+
+// Debug helper
+const debug = (message, data) => {
+  if (CURSOR_CONFIG.debug) {
+    console.log(`[Debug] ${message}:`, data);
+  }
+};
+
+// Error helper
+const handleError = (error, context) => {
+  debug(`Error in ${context}:`, error);
+  
+  if (error.response) {
+    debug(`Response error in ${context}:`, {
+      status: error.response.status,
+      data: error.response.data,
+      headers: error.response.headers
+    });
+    
+    switch (error.response.status) {
+      case 401:
+        throw new Error(ERROR_MESSAGES.authError);
+      case 408:
+        throw new Error(ERROR_MESSAGES.timeoutError);
+      default:
+        throw new Error(error.response.data?.error || ERROR_MESSAGES.serverError);
+    }
+  } else if (error.request) {
+    debug(`Network error in ${context}:`, error.request);
+    throw new Error(ERROR_MESSAGES.networkError);
+  } else {
+    debug(`Unknown error in ${context}:`, error.message);
+    throw new Error(error.message);
+  }
+};
 
 // Create axios instance with custom config
 const apiClient = axios.create({
@@ -12,52 +47,62 @@ const apiClient = axios.create({
   withCredentials: false
 });
 
+// Create Cursor API client
+const cursorClient = axios.create({
+  baseURL: CURSOR_API_URL,
+  timeout: CURSOR_CONFIG.timeout,
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  },
+  withCredentials: false
+});
+
 // Add request interceptor for debugging
-apiClient.interceptors.request.use(
+cursorClient.interceptors.request.use(
   config => {
-    console.log('API Request:', {
+    // 在每个请求中动态添加认证头
+    config.headers['Authorization'] = `Bearer ${CURSOR_API_KEY}`;
+    debug('Cursor API Request', {
       url: config.url,
       method: config.method,
+      headers: config.headers,
       data: config.data
     });
     return config;
   },
   error => {
-    console.error('Request Error:', error);
+    debug('Cursor Request Error', error);
     return Promise.reject(error);
   }
 );
 
 // Add response interceptor for debugging
-apiClient.interceptors.response.use(
+cursorClient.interceptors.response.use(
   response => {
-    console.log('API Response:', {
+    debug('Cursor API Response', {
       url: response.config.url,
       method: response.config.method,
       status: response.status,
+      headers: response.headers,
       data: response.data
     });
     return response;
   },
   error => {
-    console.error('API Error:', {
-      url: error.config?.url,
-      method: error.config?.method,
-      status: error.response?.status,
-      data: error.response?.data,
-      message: error.message
-    });
+    handleError(error, 'Cursor API Response');
     return Promise.reject(error);
   }
 );
 
 // Retry mechanism for failed requests
-const retryRequest = async (fn, retries = UPLOAD_CONFIG.retryAttempts) => {
+const retryRequest = async (fn, retries = CURSOR_CONFIG.retryAttempts) => {
   try {
     return await fn();
   } catch (error) {
-    if (retries > 0 && !error.response) {
-      await new Promise(resolve => setTimeout(resolve, UPLOAD_CONFIG.retryDelay));
+    debug('Retry request error', { error, retriesLeft: retries });
+    if (retries > 0 && (!error.response || error.response.status >= 500)) {
+      await new Promise(resolve => setTimeout(resolve, CURSOR_CONFIG.retryDelay));
       return retryRequest(fn, retries - 1);
     }
     throw error;
@@ -195,21 +240,146 @@ export const getProjectStructure = async () => {
 };
 
 // Chat operations
-export const sendChatMessage = async (messages) => {
+export const sendChatMessage = async (messages, model = CURSOR_CONFIG.defaultModel) => {
+  debug('Sending chat message', { messages, model });
   try {
-    const response = await retryRequest(() =>
-      apiClient.post(API_ENDPOINTS.chat, { messages })
-    );
-    return response.data;
-  } catch (error) {
-    console.error('Chat error:', error);
-    if (error.response) {
-      throw new Error(error.response.data?.error || ERROR_MESSAGES.serverError);
-    } else if (error.request) {
-      throw new Error(ERROR_MESSAGES.networkError);
-    } else {
-      throw new Error(error.message);
+    const response = await fetch(`${CURSOR_API_URL}${API_ENDPOINTS.chat}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${CURSOR_API_KEY}`
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: false
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    debug('Chat error', error);
+    throw new Error(error.response?.data?.error || ERROR_MESSAGES.chatError);
+  }
+};
+
+// Get available models
+export const getAvailableModels = async () => {
+  debug('Getting available models');
+  try {
+    const response = await fetch(`${CURSOR_API_URL}${API_ENDPOINTS.models}`, {
+      headers: {
+        'Authorization': `Bearer ${CURSOR_API_KEY}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.data || CURSOR_CONFIG.models;
+  } catch (error) {
+    debug('Get models error', error);
+    return CURSOR_CONFIG.models;
+  }
+};
+
+// Stream chat response
+export const streamChatResponse = async (messages, model = CURSOR_CONFIG.defaultModel, onChunk) => {
+  debug('Starting stream chat', { messages, model });
+  try {
+    const response = await fetch(`${CURSOR_API_URL}${API_ENDPOINTS.chat}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+        'Authorization': `Bearer ${CURSOR_API_KEY}`
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: true
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    // 使用原生的文本流处理
+    const textStream = response.body
+      .pipeThrough(new TextDecoderStream())
+      .getReader();
+
+    let buffer = '';
+    let messageStarted = false;
+
+    while (true) {
+      const { done, value } = await textStream.read();
+      if (done) break;
+
+      buffer += value;
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
+          
+          // 检查是否是结束标记
+          if (data === '[DONE]') {
+            messageStarted = false;
+            continue;
+          }
+
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.choices?.[0]?.delta?.content) {
+              const content = parsed.choices[0].delta.content;
+              
+              // 如果是消息的开始，检查并移除可能的乱码
+              if (!messageStarted) {
+                messageStarted = true;
+                // 找到第一个有效的文本字符
+                const validStart = content.search(/[\x20-\x7E\u4E00-\u9FFF]/);
+                if (validStart > 0) {
+                  continue; // 跳过包含乱码的第一个块
+                }
+              }
+
+              // 只保留有效的文本字符
+              const cleanContent = content.split('')
+                .filter(char => {
+                  const code = char.charCodeAt(0);
+                  return (
+                    (code >= 0x20 && code <= 0x7E) || // 基本 ASCII 可打印字符
+                    (code >= 0x4E00 && code <= 0x9FFF) || // 中文字符
+                    (code >= 0x3000 && code <= 0x303F) || // 中文标点
+                    (code >= 0xFF00 && code <= 0xFFEF) // 全角字符
+                  );
+                })
+                .join('');
+
+              if (cleanContent) {
+                onChunk(cleanContent);
+              }
+            }
+          } catch (e) {
+            debug('Error parsing chunk', e);
+            continue;
+          }
+        }
+      }
+    }
+  } catch (error) {
+    debug('Stream chat error', error);
+    throw new Error(error.response?.data?.error || ERROR_MESSAGES.chatError);
   }
 };
 

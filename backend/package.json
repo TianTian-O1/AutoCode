@@ -1,0 +1,17 @@
+{
+  "name": "cursor-api",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Cursor API wrapper for OpenAI format",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "install-start": "npm install && npm start"
+  },
+  "dependencies": {
+    "body-parser": "^1.20.3",
+    "express": "^4.21.2",
+    "node-fetch": "^3.3.2",
+    "uuid": "^9.0.1"
+  }
+}

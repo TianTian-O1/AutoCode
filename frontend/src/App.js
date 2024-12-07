@@ -21,6 +21,7 @@ import {
   GitHub as GitHubIcon,
   RestartAlt as ResetIcon,
   Close as CloseIcon,
+  Chat as ChatIcon,
 } from '@mui/icons-material';
 import Editor from './components/Editor';
 import FilePanel from './components/FilePanel';
@@ -29,7 +30,7 @@ import ChatPanel from './components/ChatPanel';
 import AppsPanel from './components/AppsPanel';
 import UploadPanel from './components/UploadPanel';
 import { listFiles, uploadFile, resetProject, getFileContent } from './services/api';
-import { ERROR_MESSAGES } from './config';
+import { ERROR_MESSAGES, CURSOR_CONFIG } from './config';
 
 const theme = createTheme({
   palette: {
@@ -205,6 +206,7 @@ function App() {
   const menuItems = [
     { id: 'files', icon: <FolderOutlined />, text: 'Files', panel: FilePanel },
     { id: 'search', icon: <SearchOutlined />, text: 'Search', panel: SearchPanel },
+    { id: 'chat', icon: <ChatIcon />, text: 'AI Chat', panel: ChatPanel },
     { id: 'apps', icon: <AppsOutlined />, text: 'Apps', panel: AppsPanel },
     { 
       id: 'upload', 
@@ -233,6 +235,17 @@ function App() {
           onFileSelect={handleFileSelect}
           onUploadClick={() => setUploadDialogOpen(true)}
           onFileChange={loadFiles}
+        />
+      );
+    } else if (menuItem.id === 'chat') {
+      return (
+        <Panel
+          onSendCode={handleCodeChange}
+          onAnalyze={handleAnalyze}
+          onGenerate={handleGenerate}
+          isAnalyzing={isAnalyzing}
+          activeFile={activeFile}
+          handleFileSelect={handleFileSelect}
         />
       );
     }

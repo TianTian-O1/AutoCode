@@ -32,9 +32,8 @@ import {
   Cloud as CloudIcon,
   Computer as ComputerIcon,
 } from '@mui/icons-material';
-import { ERROR_MESSAGES } from '../config';
-import axios from 'axios';
-import { getFileContent } from '../services/api';
+import { ERROR_MESSAGES, CURSOR_CONFIG } from '../config';
+import { sendChatMessage, streamChatResponse, getAvailableModels } from '../services/api';
 
 const API_BASE_URL = 'http://localhost:8000';
 
@@ -119,20 +118,33 @@ function ChatPanel({
   const [messages, setMessages] = useState([
     { 
       id: 1, 
-      content: '你好！我是AI助手，可以帮你进行代码分析、生成和一般的编程问题。我会根据任务复杂度自动选择使用本地或远程模型。',
+      content: '你好！我是 AI 助手，可以帮你进行代码分析、生成和一般的编程问题。',
       isBot: true, 
       type: 'text',
-      model: 'local'
+      model: CURSOR_CONFIG.defaultModel
     },
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [conversationId, setConversationId] = useState(Date.now().toString());
-  const [forceRemoteModel, setForceRemoteModel] = useState(false);
+  const [models, setModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState(CURSOR_CONFIG.defaultModel);
   const messagesEndRef = useRef(null);
   const [isSpeedDialOpen, setIsSpeedDialOpen] = useState(false);
   const [displayedContent, setDisplayedContent] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+
+  // 加载可用模型
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        const availableModels = await getAvailableModels();
+        setModels(availableModels);
+      } catch (error) {
+        console.error('Failed to load models:', error);
+      }
+    };
+    loadModels();
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -153,7 +165,7 @@ function ChatPanel({
         clearInterval(interval);
         setIsTyping(false);
       }
-    }, 20); // 调整速度
+    }, 20);
     return () => clearInterval(interval);
   }, []);
 
@@ -162,9 +174,9 @@ function ChatPanel({
 
     const userMessage = {
       id: messages.length + 1,
-      content: input,
+      content: input.trim(),
       isBot: false,
-      type: 'text',
+      type: 'text'
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -174,90 +186,70 @@ function ChatPanel({
 
     try {
       // 获取当前文件上下文
-      let fileContext = null;
+      let fileContext = '';
       if (activeFile) {
-        fileContext = {
-          path: activeFile.path,
-          content: activeFile.content,
-          language: activeFile.language
-        };
+        fileContext = `当前正在编辑的文件：${activeFile.path}\n文件内容：\n${activeFile.content}\n`;
       }
 
-      const response = await axios.post(`${API_BASE_URL}/api/chat`, {
-        conversation_id: conversationId,
-        message: input,
-        system_prompt: `你是一个智能的AI助手，可以帮助用户处理代码相关的任务。
-根据用户的输入，你需要判断：
-1. 是否需要访问文件系统（读取、修改、创建文件等）
-2. 是否需要进行代码补全或生成
-3. 是否需要进行代码分析
-
-当前文件上下文：${fileContext ? JSON.stringify(fileContext) : '无'}
-
-请用中文回答，并在需要时主动提出相关的操作建议。`,
-        file_context: fileContext
-      });
-
-      if (response.data.success) {
-        const botResponse = {
-          id: messages.length + 2,
-          content: response.data.message,
-          isBot: true,
-          type: 'text',
-          model: response.data.model || (forceRemoteModel ? 'remote' : 'local')
-        };
-        
-        setMessages(prev => [...prev, botResponse]);
-        typeMessage(response.data.message);
-
-        // 如果模型返回了需要执行的操作，执行它们
-        if (response.data.actions) {
-          let fileContent;
-          for (const action of response.data.actions) {
-            switch (action.type) {
-              case 'read_file':
-                // 读取文件
-                fileContent = await getFileContent(action.path);
-                if (fileContent) {
-                  handleFileSelect({
-                    path: action.path,
-                    content: fileContent,
-                    name: action.path.split('/').pop()
-                  });
-                }
-                break;
-              case 'modify_file':
-                // 修改文件
-                if (action.content && action.path) {
-                  // TODO: 实现文件修改逻辑
-                }
-                break;
-              case 'analyze_code':
-                // 分析代码
-                if (action.path) {
-                  onAnalyze(action.path);
-                }
-                break;
-              case 'generate_code':
-                // 生成代码
-                if (action.content) {
-                  onSendCode(action.content);
-                }
-                break;
-            }
-          }
-        }
-      } else {
-        throw new Error(response.data.error || 'Failed to get response');
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      setMessages(prev => [...prev, {
+      // 创建一个空的助手消息
+      const assistantMessage = {
         id: messages.length + 2,
-        content: error.message || ERROR_MESSAGES.networkError,
+        content: '',
         isBot: true,
         type: 'text',
-        model: 'local'
+        model: selectedModel
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+
+      // 构建消息历史
+      const messageHistory = messages.map(msg => ({
+        role: msg.isBot ? 'assistant' : 'user',
+        content: msg.content
+      }));
+
+      // 添加系统消息
+      const systemMessage = {
+        role: 'system',
+        content: `你是一个智能的 AI 助手，可以帮助用户处理代码相关的任务。
+${fileContext}
+请用中文回答，并在需要时主动提出相关的操作建议。`
+      };
+
+      // 添加用户的新消息
+      messageHistory.push({
+        role: 'user',
+        content: input
+      });
+
+      // 使用流式响应
+      let fullContent = '';
+      await streamChatResponse(
+        [systemMessage, ...messageHistory],
+        selectedModel,
+        (chunk) => {
+          fullContent += chunk;
+          setMessages(prev => {
+            const lastMessage = prev[prev.length - 1];
+            if (lastMessage.isBot && lastMessage.id === assistantMessage.id) {
+              return [
+                ...prev.slice(0, -1),
+                { ...lastMessage, content: fullContent }
+              ];
+            }
+            return prev;
+          });
+        }
+      );
+    } catch (error) {
+      console.error('Chat error:', error);
+      // 添加错误消息
+      setMessages(prev => [...prev, {
+        id: messages.length + 2,
+        content: '抱歉，发生了错误：' + error.message,
+        isBot: true,
+        type: 'text',
+        model: selectedModel,
+        isError: true
       }]);
     } finally {
       setIsLoading(false);
@@ -265,143 +257,119 @@ function ChatPanel({
   };
 
   return (
-    <Box sx={{ 
-      height: '100%', 
-      display: 'flex', 
-      flexDirection: 'column',
-      width: '400px',
-      position: 'relative',
-      bgcolor: 'background.paper',
-    }}>
-      {/* Header */}
-      <Box sx={{ 
-        p: 2, 
-        borderBottom: 1, 
-        borderColor: 'divider', 
-        display: 'flex', 
-        alignItems: 'center',
-        minHeight: 64,
-      }}>
-        <Typography variant="h6" sx={{ flexGrow: 1 }}>AI Chat</Typography>
-        <Tooltip title="Force using remote model for all requests">
-          <FormControlLabel
-            control={
-              <Switch
-                checked={forceRemoteModel}
-                onChange={(e) => setForceRemoteModel(e.target.checked)}
-                size="small"
-              />
-            }
-            label={
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                {forceRemoteModel ? <CloudIcon sx={{ mr: 0.5 }} /> : <ComputerIcon sx={{ mr: 0.5 }} />}
-                <Typography variant="body2">
-                  {forceRemoteModel ? 'Remote' : 'Auto'}
-                </Typography>
-              </Box>
-            }
-          />
-        </Tooltip>
-      </Box>
-
-      {/* Messages Container */}
-      <Box sx={{ 
-        flexGrow: 1, 
-        overflow: 'hidden',
-        display: 'flex',
-        borderLeft: 1,
-        borderColor: 'divider',
-      }}>
-        {/* Messages List with Scroll */}
-        <Box sx={{ 
-          flexGrow: 1,
-          overflow: 'auto',
-          '&::-webkit-scrollbar': {
-            width: '8px',
-            bgcolor: 'background.paper',
-          },
-          '&::-webkit-scrollbar-thumb': {
-            backgroundColor: 'rgba(0, 0, 0, 0.2)',
-            borderRadius: '4px',
-          },
-        }}>
-          <List sx={{ p: 2 }}>
-            {messages.map((message) => (
-              <Message
-                key={message.id}
-                message={{
-                  ...message,
-                  content: message.id === messages.length && message.isBot && isTyping
-                    ? displayedContent
-                    : message.content
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Model selector */}
+      <Box sx={{ p: 1, borderBottom: 1, borderColor: 'divider' }}>
+        <FormControlLabel
+          control={
+            <Box sx={{ minWidth: 120 }}>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  backgroundColor: 'transparent',
+                  color: 'inherit',
+                  border: '1px solid rgba(255, 255, 255, 0.23)',
+                  borderRadius: '4px'
                 }}
-                isBot={message.isBot}
-                onRunCode={onSendCode}
-              />
-            ))}
-            <div ref={messagesEndRef} />
-          </List>
-        </Box>
-      </Box>
-
-      {/* Input Box */}
-      <Box sx={{ 
-        p: 2, 
-        borderTop: 1,
-        borderLeft: 1,
-        borderColor: 'divider',
-      }}>
-        <TextField
-          fullWidth
-          multiline
-          maxRows={4}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-          placeholder={`Type your message... ${isLoading ? '(Processing...)' : ''}`}
-          variant="outlined"
-          size="small"
-          disabled={isLoading}
-          InputProps={{
-            endAdornment: (
-              <IconButton
-                onClick={handleSend}
-                disabled={isLoading || !input.trim()}
-                color="primary"
               >
-                <SendIcon />
-              </IconButton>
-            ),
-          }}
+                {models.map(model => (
+                  <option key={model.id} value={model.id}>
+                    {model.id}
+                  </option>
+                ))}
+              </select>
+            </Box>
+          }
+          label="模型："
+          labelPlacement="start"
         />
       </Box>
 
-      {/* Loading Indicator */}
-      {isLoading && (
-        <Box sx={{
-          position: 'absolute',
-          top: 64, // Header height
-          left: 0,
-          right: 0,
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          p: 1,
-          bgcolor: 'rgba(0, 0, 0, 0.6)',
-          color: 'white',
-          zIndex: 1,
-        }}>
-          <CircularProgress size={20} sx={{ mr: 1 }} color="inherit" />
-          <Typography variant="body2">
-            AI is thinking...
-          </Typography>
+      {/* Messages list */}
+      <List sx={{ 
+        flexGrow: 1, 
+        overflow: 'auto',
+        p: 2,
+        '& .MuiListItem-root': {
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          gap: 1
+        }
+      }}>
+        {messages.map((message) => (
+          <Message
+            key={message.id}
+            message={message}
+            isBot={message.isBot}
+            onRunCode={onSendCode}
+          />
+        ))}
+        <div ref={messagesEndRef} />
+      </List>
+
+      {/* Input area */}
+      <Box sx={{ 
+        p: 2, 
+        borderTop: 1, 
+        borderColor: 'divider',
+        backgroundColor: 'background.paper'
+      }}>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <TextField
+            fullWidth
+            multiline
+            maxRows={4}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder="输入消息..."
+            disabled={isLoading}
+            sx={{ '& .MuiOutlinedInput-root': { backgroundColor: 'background.default' } }}
+          />
+          <IconButton 
+            color="primary" 
+            onClick={handleSend}
+            disabled={isLoading || !input.trim()}
+          >
+            {isLoading ? <CircularProgress size={24} /> : <SendIcon />}
+          </IconButton>
         </Box>
-      )}
+      </Box>
+
+      {/* Speed Dial */}
+      <SpeedDial
+        ariaLabel="Actions"
+        sx={{ position: 'absolute', bottom: 16, right: 16 }}
+        icon={<SpeedDialIcon />}
+        open={isSpeedDialOpen}
+        onOpen={() => setIsSpeedDialOpen(true)}
+        onClose={() => setIsSpeedDialOpen(false)}
+      >
+        <SpeedDialAction
+          icon={<AnalyticsIcon />}
+          tooltipTitle="分析代码"
+          onClick={() => {
+            setIsSpeedDialOpen(false);
+            onAnalyze();
+          }}
+        />
+        <SpeedDialAction
+          icon={<GenerateIcon />}
+          tooltipTitle="生成代码"
+          onClick={() => {
+            setIsSpeedDialOpen(false);
+            onGenerate();
+          }}
+        />
+      </SpeedDial>
     </Box>
   );
 }
