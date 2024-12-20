@@ -83,7 +83,7 @@
   "dependencies": {
     "@opensumi/ide-addons": "3.6.3",
     "@opensumi/ide-ai-native": "3.6.3",
-    "@opensumi/ide-comments": "3.6.3",
+    "@opensumi/ide-comments": "3.6.4",
     "@opensumi/ide-core-browser": "3.6.3",
     "@opensumi/ide-core-common": "3.6.3",
     "@opensumi/ide-core-electron-main": "3.6.3",
