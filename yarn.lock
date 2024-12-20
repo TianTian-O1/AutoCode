@@ -4015,7 +4015,7 @@ __metadata:
     tsconfig-paths: "npm:^4.2.0"
     tsconfig-paths-webpack-plugin: "npm:^4.1.0"
     typescript: "npm:^5.5.3"
-    undici-types: "npm:^6.20.0"
+    undici-types: "npm:^7.2.0"
     webpack: "npm:^5.94.0"
     webpack-cli: "npm:^5.1.4"
     webpack-dev-server: "npm:^5.2.0"
@@ -13878,10 +13878,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"undici-types@npm:^6.20.0":
-  version: 6.21.0
-  resolution: "undici-types@npm:6.21.0"
-  checksum: 10/ec8f41aa4359d50f9b59fa61fe3efce3477cc681908c8f84354d8567bb3701fafdddf36ef6bff307024d3feb42c837cf6f670314ba37fc8145e219560e473d14
+"undici-types@npm:^7.2.0":
+  version: 7.2.0
+  resolution: "undici-types@npm:7.2.0"
+  checksum: 10/9eaf84405552093b0c26a046034e02c8bf8a3385bd57e8ac83a54950e552a7ed193838dd444954056510295f98dee0a7d1aad00039fccdaa6c4dcbc34e308fdb
   languageName: node
   linkType: hard
 
