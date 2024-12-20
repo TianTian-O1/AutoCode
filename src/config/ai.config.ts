@@ -1,7 +1,9 @@
+import { ENV } from './env';
+
 export const AI_CONFIG = {
-    baseUrl: process.env.BASE_URL || 'https://api.openai.com/v1',
-    apiKey: process.env.OPENAI_API_KEY || '',
-    model: process.env.MODEL_NAME || 'gpt-4',
+    baseUrl: ENV.BASE_URL,
+    apiKey: ENV.OPENAI_API_KEY,
+    model: ENV.MODEL_NAME,
     // Other AI-related configurations can be added here
     chat: {
         temperature: 0.7,

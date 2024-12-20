@@ -3,6 +3,7 @@ import { AI_NATIVE_SETTING_GROUP_ID, localize, MaybePromise, Delayer, CommandSer
 import { Domain, PreferenceContribution, PreferenceSchema, ClientAppContribution, IClientApp, PreferenceService, COMMON_COMMANDS, IPreferenceSettingsService } from '@opensumi/ide-core-browser'
 import { ISettingRegistry, SettingContribution } from '@opensumi/ide-preferences';
 import { AIModelServicePath, IAIModelServiceProxy, ModelSettingId } from '../common'
+import { ENV } from '../../config/env';
 import { OutputChannel } from '@opensumi/ide-output/lib/browser/output.channel';
 import { OutputService } from '@opensumi/ide-output/lib/browser/output.service';
 import { MessageService } from '@opensumi/ide-overlay/lib/browser/message.service';
@@ -13,15 +14,15 @@ const aiNativePreferenceSchema: PreferenceSchema = {
   properties: {
     [ModelSettingId.baseUrl]: {
       type: 'string',
-      defaultValue: process.env.BASE_URL || 'https://api.openai.com/v1',
+      defaultValue: ENV.BASE_URL,
     },
     [ModelSettingId.apiKey]: {
       type: 'string',
-      defaultValue: process.env.OPENAI_API_KEY || '',
+      defaultValue: ENV.OPENAI_API_KEY,
     },
     [ModelSettingId.chatModelName]: {
       type: 'string',
-      defaultValue: process.env.MODEL_NAME || 'gpt-4',
+      defaultValue: ENV.MODEL_NAME,
     },
     [ModelSettingId.chatSystemPrompt]: {
       type: 'string',
