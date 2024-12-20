@@ -89,7 +89,7 @@
     "@opensumi/ide-core-electron-main": "3.6.3",
     "@opensumi/ide-core-node": "3.6.3",
     "@opensumi/ide-debug": "3.6.3",
-    "@opensumi/ide-decoration": "3.6.3",
+    "@opensumi/ide-decoration": "3.6.4",
     "@opensumi/ide-design": "3.6.3",
     "@opensumi/ide-editor": "3.6.3",
     "@opensumi/ide-electron-basic": "3.6.3",
