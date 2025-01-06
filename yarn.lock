@@ -981,6 +981,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opensumi/ide-connection@npm:3.7.0":
+  version: 3.7.0
+  resolution: "@opensumi/ide-connection@npm:3.7.0"
+  dependencies:
+    "@furyjs/fury": "npm:0.5.9-beta"
+    "@opensumi/events": "npm:^1.0.0"
+    "@opensumi/ide-core-common": "npm:3.7.0"
+    "@opensumi/ide-utils": "npm:3.7.0"
+    "@opensumi/reconnecting-websocket": "npm:^4.4.0"
+    "@opensumi/vscode-jsonrpc": "npm:^8.0.0-next.2"
+    path-to-regexp: "npm:^6.2.1"
+    ws: "npm:^8.16.0"
+  checksum: 10/3300ad1952aa96f912a6d60c294ecdbc57fe2b6831df668bb27e682c57707adc26d5303734e91afae8316edc1338c12f9eff99efc9be7d41dab721c3b24d6e12
+  languageName: node
+  linkType: hard
+
 "@opensumi/ide-core-browser@npm:3.6.3":
   version: 3.6.3
   resolution: "@opensumi/ide-core-browser@npm:3.6.3"
@@ -1021,6 +1037,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opensumi/ide-core-common@npm:3.7.0":
+  version: 3.7.0
+  resolution: "@opensumi/ide-core-common@npm:3.7.0"
+  dependencies:
+    "@opensumi/di": "npm:^1.8.0"
+    "@opensumi/events": "npm:^1.0.0"
+    "@opensumi/ide-utils": "npm:3.7.0"
+  checksum: 10/0925cf0b7952cbb42694f6da2812970e93db657802d236b2f0ac4817d0d49c4fb1124c6ea9b1014d13c7f8498570ede0b5869a14464c6dbf1775f7e529a5e87c
+  languageName: node
+  linkType: hard
+
 "@opensumi/ide-core-electron-main@npm:3.6.3":
   version: 3.6.3
   resolution: "@opensumi/ide-core-electron-main@npm:3.6.3"
@@ -1045,6 +1072,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opensumi/ide-core-node@npm:3.7.0":
+  version: 3.7.0
+  resolution: "@opensumi/ide-core-node@npm:3.7.0"
+  dependencies:
+    "@opensumi/ide-connection": "npm:3.7.0"
+    "@opensumi/ide-core-common": "npm:3.7.0"
+    "@opensumi/ide-utils": "npm:3.7.0"
+    keytar: "npm:^7.7.0"
+  checksum: 10/0846e25d5c64b6fd4082ef9df4f48e5638862c17b2f0edcea89d0ab6a54e27bd85ca736504a445c785140a5962f64550111dc0553adaaeededf956be5cba31a5
+  languageName: node
+  linkType: hard
+
 "@opensumi/ide-debug@npm:3.6.3":
   version: 3.6.3
   resolution: "@opensumi/ide-debug@npm:3.6.3"
@@ -1066,13 +1105,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@opensumi/ide-decoration@npm:3.6.3":
-  version: 3.6.3
-  resolution: "@opensumi/ide-decoration@npm:3.6.3"
+"@opensumi/ide-decoration@npm:3.7.0":
+  version: 3.7.0
+  resolution: "@opensumi/ide-decoration@npm:3.7.0"
   dependencies:
-    "@opensumi/ide-core-common": "npm:3.6.3"
-    "@opensumi/ide-core-node": "npm:3.6.3"
-  checksum: 10/85602ed176e17a8993eaa2d76180e06428cea93949f5dc14c5e7d7922bab9c8cb47820692122ec8efd833ae6dea0e26776e0c47b68b0b7a85fbeeaf3d684e4d0
+    "@opensumi/ide-core-common": "npm:3.7.0"
+    "@opensumi/ide-core-node": "npm:3.7.0"
+  checksum: 10/2fab0763d047f3697ec6d2e99faf68003eae9a8313c6ec18e8aef0ca5e959f5f0dbd3371f63dca4bcd3d8e7947e6446e28194bd7ebda24662e100cb2ff68ebfd
   languageName: node
   linkType: hard
 
@@ -1534,6 +1573,19 @@ __metadata:
     nanoid: "npm:3.3.4"
     vscode-uri: "npm:3.0.2"
   checksum: 10/168dd6826fd94c1e070b580a628ed51eb59df3e1be5d1e454ab2d4b49e40139051ad271c1ecfd31ffe5d07669ceae7462c46ddbae4d5086e15b294cf501f12da
+  languageName: node
+  linkType: hard
+
+"@opensumi/ide-utils@npm:3.7.0":
+  version: 3.7.0
+  resolution: "@opensumi/ide-utils@npm:3.7.0"
+  dependencies:
+    iconv-lite: "npm:^0.6.3"
+    jschardet: "npm:3.0.0"
+    mri: "npm:^1.2.0"
+    nanoid: "npm:3.3.8"
+    vscode-uri: "npm:3.0.2"
+  checksum: 10/63f5cefe1f768cd9cc71644ef35f38f3d8319eeead6adda03431a5a73334a418aece7b6333affa60fbfac39e9cfd848382a07829f989a40e100fd9908428300d
   languageName: node
   linkType: hard
 
@@ -3924,7 +3976,7 @@ __metadata:
     "@opensumi/ide-core-electron-main": "npm:3.6.3"
     "@opensumi/ide-core-node": "npm:3.6.3"
     "@opensumi/ide-debug": "npm:3.6.3"
-    "@opensumi/ide-decoration": "npm:3.6.3"
+    "@opensumi/ide-decoration": "npm:3.7.0"
     "@opensumi/ide-design": "npm:3.6.3"
     "@opensumi/ide-editor": "npm:3.6.3"
     "@opensumi/ide-electron-basic": "npm:3.6.3"
@@ -9497,7 +9549,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nanoid@npm:^3.3.7":
+"nanoid@npm:3.3.8, nanoid@npm:^3.3.7":
   version: 3.3.8
   resolution: "nanoid@npm:3.3.8"
   bin:
