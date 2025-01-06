@@ -1021,6 +1021,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opensumi/ide-core-common@npm:3.7.0":
+  version: 3.7.0
+  resolution: "@opensumi/ide-core-common@npm:3.7.0"
+  dependencies:
+    "@opensumi/di": "npm:^1.8.0"
+    "@opensumi/events": "npm:^1.0.0"
+    "@opensumi/ide-utils": "npm:3.7.0"
+  checksum: 10/0925cf0b7952cbb42694f6da2812970e93db657802d236b2f0ac4817d0d49c4fb1124c6ea9b1014d13c7f8498570ede0b5869a14464c6dbf1775f7e529a5e87c
+  languageName: node
+  linkType: hard
+
 "@opensumi/ide-core-electron-main@npm:3.6.3":
   version: 3.6.3
   resolution: "@opensumi/ide-core-electron-main@npm:3.6.3"
@@ -1537,6 +1548,19 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opensumi/ide-utils@npm:3.7.0":
+  version: 3.7.0
+  resolution: "@opensumi/ide-utils@npm:3.7.0"
+  dependencies:
+    iconv-lite: "npm:^0.6.3"
+    jschardet: "npm:3.0.0"
+    mri: "npm:^1.2.0"
+    nanoid: "npm:3.3.8"
+    vscode-uri: "npm:3.0.2"
+  checksum: 10/63f5cefe1f768cd9cc71644ef35f38f3d8319eeead6adda03431a5a73334a418aece7b6333affa60fbfac39e9cfd848382a07829f989a40e100fd9908428300d
+  languageName: node
+  linkType: hard
+
 "@opensumi/ide-variable@npm:3.6.3":
   version: 3.6.3
   resolution: "@opensumi/ide-variable@npm:3.6.3"
@@ -1554,6 +1578,17 @@ __metadata:
   peerDependencies:
     electron: "*"
   checksum: 10/c60f206764a359361b3d6ab12a8d2476e402e3d53b2528386c803880e12455faf2f9d6253882ca312af76296e8bf1e6b1a5e3d4c71070e61344b8f1fce39e89e
+  languageName: node
+  linkType: hard
+
+"@opensumi/ide-webview@npm:3.7.0":
+  version: 3.7.0
+  resolution: "@opensumi/ide-webview@npm:3.7.0"
+  dependencies:
+    "@opensumi/ide-core-common": "npm:3.7.0"
+  peerDependencies:
+    electron: "*"
+  checksum: 10/f7c81f745ed83a9215c0187bfbeddeb72eeafdc68c95de0fd45f70f5552ac5140acd4a0e6607bd5d34a73aea7ff30e1eb1337050cc5f0f80a72edab7f3960897
   languageName: node
   linkType: hard
 
@@ -3964,7 +3999,7 @@ __metadata:
     "@opensumi/ide-theme": "npm:3.6.3"
     "@opensumi/ide-toolbar": "npm:3.6.3"
     "@opensumi/ide-variable": "npm:3.6.3"
-    "@opensumi/ide-webview": "npm:3.6.3"
+    "@opensumi/ide-webview": "npm:3.7.0"
     "@opensumi/ide-workspace": "npm:3.6.3"
     "@opensumi/ide-workspace-edit": "npm:3.6.3"
     "@opensumi/tree-sitter-wasm": "npm:1.1.2"
@@ -9497,7 +9532,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nanoid@npm:^3.3.7":
+"nanoid@npm:3.3.8, nanoid@npm:^3.3.7":
   version: 3.3.8
   resolution: "nanoid@npm:3.3.8"
   bin:
