@@ -926,13 +926,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@opensumi/ide-comments@npm:3.6.3":
-  version: 3.6.3
-  resolution: "@opensumi/ide-comments@npm:3.6.3"
+"@opensumi/ide-comments@npm:3.8.0":
+  version: 3.8.0
+  resolution: "@opensumi/ide-comments@npm:3.8.0"
   dependencies:
-    "@opensumi/ide-core-common": "npm:3.6.3"
+    "@opensumi/ide-core-common": "npm:3.8.0"
     react-mentions: "npm:^4.4.10"
-  checksum: 10/be231a2ea00bc9688c4a2cd495a51e2ad0daed0eed762f63a3a3a59fe317b16ce020563efb053541954e91f3aaefbbd582e1ab2e48996d8298ae23352364472a
+  checksum: 10/abcec64907930941bab28f4bd4e94296bb6588db79171a52d7bb8b09b26416217c618bd8cfadba4e23ae66561b66bc0d5682253cbcc791ada2674beff494d434
   languageName: node
   linkType: hard
 
@@ -1018,6 +1018,17 @@ __metadata:
     "@opensumi/events": "npm:^1.0.0"
     "@opensumi/ide-utils": "npm:3.6.3"
   checksum: 10/4b6082b6885075ed7e254fc1cff24243ac3f2bf103e6e1923895c67f6d45810f4ce6a710e094144a2dbbb27e9189fb7145ced0bb3f071fc0001277c31411ec5e
+  languageName: node
+  linkType: hard
+
+"@opensumi/ide-core-common@npm:3.8.0":
+  version: 3.8.0
+  resolution: "@opensumi/ide-core-common@npm:3.8.0"
+  dependencies:
+    "@opensumi/di": "npm:^1.8.0"
+    "@opensumi/events": "npm:^1.0.0"
+    "@opensumi/ide-utils": "npm:3.8.0"
+  checksum: 10/bd502bdbabd972917f0d3c3ffec9bf29cd1e364425906ae2ac0afd33cf6d5a4b34a9275ea99e8b7c8108241c97a385d3bb959a468077a39b657e4e611ba543e4
   languageName: node
   linkType: hard
 
@@ -1534,6 +1545,19 @@ __metadata:
     nanoid: "npm:3.3.4"
     vscode-uri: "npm:3.0.2"
   checksum: 10/168dd6826fd94c1e070b580a628ed51eb59df3e1be5d1e454ab2d4b49e40139051ad271c1ecfd31ffe5d07669ceae7462c46ddbae4d5086e15b294cf501f12da
+  languageName: node
+  linkType: hard
+
+"@opensumi/ide-utils@npm:3.8.0":
+  version: 3.8.0
+  resolution: "@opensumi/ide-utils@npm:3.8.0"
+  dependencies:
+    iconv-lite: "npm:^0.6.3"
+    jschardet: "npm:3.0.0"
+    mri: "npm:^1.2.0"
+    nanoid: "npm:3.3.8"
+    vscode-uri: "npm:3.0.2"
+  checksum: 10/34227b32d8ce125f7044c666caf5ee6f848b30d9535d3634c3bcb27d081990e6d0af16eedaf2c858f18a2e474a8e242dcbf9af1e58d0e1667d2c6929b21a66bf
   languageName: node
   linkType: hard
 
@@ -3918,7 +3942,7 @@ __metadata:
     "@electron-forge/web-multi-logger": "npm:^7.5.0"
     "@opensumi/ide-addons": "npm:3.6.3"
     "@opensumi/ide-ai-native": "npm:3.6.3"
-    "@opensumi/ide-comments": "npm:3.6.3"
+    "@opensumi/ide-comments": "npm:3.8.0"
     "@opensumi/ide-core-browser": "npm:3.6.3"
     "@opensumi/ide-core-common": "npm:3.6.3"
     "@opensumi/ide-core-electron-main": "npm:3.6.3"
@@ -9497,7 +9521,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nanoid@npm:^3.3.7":
+"nanoid@npm:3.3.8, nanoid@npm:^3.3.7":
   version: 3.3.8
   resolution: "nanoid@npm:3.3.8"
   bin:
